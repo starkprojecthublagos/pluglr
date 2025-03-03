@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Event Image</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            max-width: 500px;
+        }
+        label {
+            font-weight: bold;
+        }
+        input, textarea, button {
+            width: 100%;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            padding: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Create Event</h2>
+    <form id="eventForm">
+        <label for="user_id">User ID:</label>
+        <input type="number" id="user_id" name="user_id" required>
+
+        <label for="title">Title:</label>
+        <input type="text" id="title" name="title" required>
+
+        <label for="start_time">Start Time:</label>
+        <input type="datetime-local" id="start_time" name="start_time" required>
+
+        <label for="end_time">End Time:</label>
+        <input type="datetime-local" id="end_time" name="end_time" required>
+
+        <label for="category">Category:</label>
+        <input type="text" id="category" name="category" required>
+
+        <label for="description">Description:</label>
+        <textarea id="description" name="description" rows="4"></textarea>
+
+        <label for="image">Upload Image:</label>
+        <input type="file" id="image" name="image" accept="image/*" required>
+
+        <button type="button" onclick="submitEvent()">Submit Event</button>
+    </form>
+
+    <script>
+        async function submitEvent() {
+            const form = document.getElementById("eventForm");
+            const formData = new FormData(form);
+
+            // Get the JWT token (replace with your actual token retrieval logic)
+            const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDEwNjkxNjgsImlhdCI6MTc0MDk4Mjc2OCwicm9sZXMiOlsiVVNFUiJdLCJ1c2VyX2lkIjoiMSJ9.B4IH-AzWr_fqcB2D0TEHXVu0CKhj6S2TUjrphSmqHeQ";
+
+            try {
+                const response = await fetch("http://localhost:8084/api/v1/event/2", {
+                    method: "PUT",
+                    body: formData,
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert("Event created successfully!");
+                } else {
+                    alert(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error("Error submitting event:", error);
+                alert("Failed to submit event.");
+            }
+        }
+    </script>
+
+</body>
+</html>
