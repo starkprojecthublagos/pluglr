@@ -1,9 +1,5 @@
 ## Event Service API Endpoints
 
-
-# EVERYTHING IS AUTHENTICATED BY JWT TOKEN, SO SEND IT ALONG.
-
-
 ### Event Management
 | Endpoint | Method | Description | Expected Data |
 |----------|--------|-------------|--------------|
