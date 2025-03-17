@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Screen Sharing</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+</head>
+
+<body>
+    
+    <video id="video" class="video" controls width="100%" height="100%"></video>
+    
+    <div style="width:80%;margin: auto;padding-top:10px ;">
+        <button class="btn btn-primary" id="start"> Start Screen Sharing</button>
+    </div>
+    <script type="text/javascript">
+ 
+        const startElem = document.getElementById("start");
+
+        // Set event listeners for the start and stop buttons
+        startElem.addEventListener("click", function (evt) {
+            startCapture();
+        }, false);
+    
+       const startCapture = async() =>{
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    MediaSource:"screen"
+                },
+                audio: true
+            });
+
+            const data = [];
+
+            const mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable=(e)=>{
+                data.push(e.data);
+            }
+            mediaRecorder.start();
+
+            mediaRecorder.onstop=(e)=>{
+                console.log("jim");
+                
+            document.querySelector("video").src=URL.createObjectURL(
+                new Blob(data,{
+                    type:data[0].type,
+                })
+            )
+            }
+        };
+
+          
+    </script>
+</body>
+</html>

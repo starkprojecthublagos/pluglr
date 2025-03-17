@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Sharing</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        #cameraVideo, #output {
+            display: none;
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            width: 150px;
+            height: 100px;
+            border-radius: 8px;
+            border: 2px solid white;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3);
+            background: black;
+            cursor: grab;
+        }
+        
+        #output {
+            display: none;
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            width: 150px;
+            height: 100px;
+            border-radius: 8px;
+            border: 2px solid white;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3);
+            background: black;
+            cursor: grab;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <video id="cameraVideo" autoplay playsinline></video>
+    <div style="width:80%; margin:auto; padding-top:10px; text-align: center;">
+        <button class="btn btn-primary" id="start">Start Screen Sharing</button>
+    </div>
+    
+    <canvas id="canvas" style="display: none;"></canvas>
+    <img id="output" alt="Processed Video" />
+
+    <label for="bg-option">Choose Background:</label>
+    <select id="bg-option">
+        <option value="none">No Background Change</option>
+        <option value="color">Color Background</option>
+        <option value="image">Image Background</option>
+    </select>
+
+    <input type="color" id="color-picker" style="display: none;" />
+    <input type="file" id="bg-upload" accept="image/*" style="display: none;" />
+
+    <script>
+    let cameraVideo = document.getElementById("cameraVideo");
+    let startBtn = document.getElementById("start");
+    let output = document.getElementById("output");
+    let bgOption = document.getElementById("bg-option");
+    let colorPicker = document.getElementById("color-picker");
+    let bgUpload = document.getElementById("bg-upload");
+    let screenStream, cameraStream, ws, wsVideo, wsBroadcast;
+    
+    let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEwLCJleHAiOjE3NDIxMjI1ODEsImlhdCI6MTc0MjAzNjE4MX0.f6cx15Lkf8xTV3FNPL_dIzE9A4kmR_u16ItS4EBAsqE"; 
+
+    async function authenticatedUserWebrtc() {
+        return new Promise((resolve, reject) => {
+            let wsWebRTC = new WebSocket(`ws://localhost:8001/ws/webrtc/?token=${encodeURIComponent(token)}`);
+            
+            wsWebRTC.onmessage = (event) => {
+                let data = JSON.parse(event.data);
+                if (data.id) {
+                    wsWebRTC.close();
+                    resolve(data.id);
+                }
+            };
+            wsWebRTC.onerror = (error) => reject(error);
+        });
+    }
+
+    async function connectToVideoCameraStream(userId) {
+        return new Promise((resolve, reject) => {
+            ws = new WebSocket(`ws://127.0.0.1:8001/ws/video/stream/${userId}/`);
+            
+            ws.onopen = () => {
+                console.log("Connected to Video Streaming WebSocket");
+                resolve(ws);
+            };
+            
+            ws.onerror = (err) => {
+                console.error("Video Stream WebSocket Error:", err);
+                reject(err);
+            };
+
+            ws.onmessage = processWebSocketMessage;
+            ws.onclose = () => console.log("Video Streaming WebSocket closed");
+        });
+    }
+
+    async function startStreaming() {
+        try {
+            let userId = await authenticatedUserWebrtc();
+            wsVideo = await connectToVideoCameraStream(userId);
+
+            // Request screen share
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+
+            let audioTracks = screenStream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                // No audio in screen sharing, fallback to microphone
+                let micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                screenStream.addTrack(micStream.getAudioTracks()[0]);
+            }
+
+            wsBroadcast = new WebSocket(`ws://localhost:8001/ws/webrtc/`);
+            wsBroadcast.onopen = () => console.log("Connected to Live Stream WebSocket");
+
+            broadcastScreenStream(screenStream);
+        } catch (error) {
+            console.error("Error starting stream:", error);
+        }
+    }
+
+    function broadcastScreenStream(stream) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.play();
+
+        video.onplay = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            function captureFrame() {
+                if (video.paused || video.ended) return;
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+                if (ws?.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ frame: frameData }));
+                }
+                requestAnimationFrame(captureFrame);
+            }
+            captureFrame();
+        };
+    }
+
+    function processWebSocketMessage(event) {
+        try {
+            let data = JSON.parse(event.data);
+            
+            if (data.frame) {
+                output.style.display = "block";
+                output.src = `data:image/jpeg;base64,${data.frame}`;
+            }
+
+            if (data.background_type) {
+                if (data.background_type === "color") {
+                    document.body.style.backgroundColor = data.background_color;
+                } else if (data.background_type === "image") {
+                    document.body.style.backgroundImage = `url('data:image/jpeg;base64,${data.background_image}')`;
+                    document.body.style.backgroundSize = "cover";
+                } else {
+                    document.body.style.background = "none";
+                }
+            }
+        } catch (error) {
+            console.error("Error processing WebSocket message:", error);
+        }
+    }
+
+    async function startCamera() {
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            cameraVideo.srcObject = cameraStream;
+            cameraVideo.style.display = "block";
+        } catch (error) {
+            console.error("Error accessing camera:", error);
+        }
+    }
+
+    function setupBackgroundControls() {
+        bgOption.addEventListener("change", handleBackgroundSelection);
+        colorPicker.addEventListener("input", sendBackgroundColor);
+        bgUpload.addEventListener("change", uploadBackgroundImage);
+    }
+
+    function handleBackgroundSelection() {
+        let choice = bgOption.value;
+        colorPicker.style.display = choice === "color" ? "block" : "none";
+        bgUpload.style.display = choice === "image" ? "block" : "none";
+        
+        if (choice == "none" && ws?.readyState == WebSocket.OPEN) {
+            ws.send(JSON.stringify({ background_type: "none" }));
+        }
+    }
+
+    function sendBackgroundColor() {
+        let color = colorPicker.value;
+        if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ background_type: "color", background_color: color }));
+        }
+    }
+
+    function uploadBackgroundImage(event) {
+        let file = event.target.files[0];
+        if (file) {
+            let reader = new FileReader();
+            reader.onload = () => {
+                let base64Image = reader.result.split(",")[1];
+                if (ws?.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ background_type: "image", background_image: base64Image }));
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    startBtn.addEventListener("click", startStreaming);
+    setupBackgroundControls();
+
+    document.addEventListener("DOMContentLoaded", function () {
+        let output = document.getElementById("output");
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        output.addEventListener("mousedown", function (event) {
+            isDragging = true;
+            offsetX = event.clientX - output.getBoundingClientRect().left;
+            offsetY = event.clientY - output.getBoundingClientRect().top;
+            output.style.cursor = "grabbing";
+        });
+
+        document.addEventListener("mousemove", function (event) {
+            if (isDragging) {
+                let x = event.clientX - offsetX;
+                let y = event.clientY - offsetY;
+
+                // Ensure it stays within the viewport bounds
+                let maxX = window.innerWidth - output.offsetWidth;
+                let maxY = window.innerHeight - output.offsetHeight;
+
+                x = Math.max(0, Math.min(x, maxX));
+                y = Math.max(0, Math.min(y, maxY));
+
+                output.style.left = `${x}px`;
+                output.style.top = `${y}px`;
+            }
+        });
+
+        document.addEventListener("mouseup", function () {
+            isDragging = false;
+            output.style.cursor = "grab";
+        });
+    });
+    </script>
+</body>
+</html>
