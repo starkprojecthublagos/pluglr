@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8
+    container_name: django_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: Rubies@2030
+      MYSQL_DATABASE: pluglr_auth
+      MYSQL_USER: pluglr_admin
+      MYSQL_PASSWORD: Rubies@2030
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  web:
+    build: .
+    container_name: django_auth
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - DB_NAME=pluglr_auth
+      - DB_USER=pluglr_admin
+      - DB_PASSWORD=Rubies@2030
+      - DB_HOST=db
+      - DB_PORT=3306
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: ["gunicorn", "--bind", "0.0.0.0:8000", "auth_service.wsgi:application"]
+volumes:
+  mysql_data:
