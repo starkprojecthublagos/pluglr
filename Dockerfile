@@ -1,21 +1,36 @@
-# Use Python base image
-FROM python:3.10
+FROM python:3.10-slim
 
 # Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Set work directory
 WORKDIR /app
 
-# Copy project files
-COPY . /app
+# Install system dependencies including PostgreSQL client and Pillow requirements
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    postgresql-client \
+    libpq-dev \
+    pkg-config \
+    build-essential \
+    gcc \
+    libjpeg-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+# Copy requirements file
+COPY requirements.txt /app/
 
-# Expose port
-EXPOSE 8000
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install channels daphne
 
-# Run migrations and start the application
-CMD ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+# Copy project
+COPY . /app/
+
+# Run the application
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
