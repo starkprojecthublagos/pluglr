@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import JSONParser
+from rest_framework.permissions import IsAuthenticated
 from app.services.authentication import CustomJWTAuthentication
 from .models import AccountVerification, CustomUser
 from .serializers import ProfileUpdateSerializer
@@ -263,12 +264,17 @@ class VerifyOTPAPI(APIView):
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
-class CompleteProfileAPI(APIView):
+# class CompleteProfileAPI(APIView):
     authentication_classes = [CustomJWTAuthentication]
+    permission_classes = [IsAuthenticated]  # Add this to require authentication
 
     def put(self, request):
         user = request.user
-
+        
+        # Check if user is authenticated
+        if not user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+            
         # Validate and update profile data
         serializer = ProfileUpdateSerializer(
             user, data=request.data, partial=True)
@@ -277,7 +283,6 @@ class CompleteProfileAPI(APIView):
             return Response({"message": "Profile updated successfully."}, status=status.HTTP_200_OK)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class FindUserByIdAPI(APIView):
     authentication_classes = [CustomJWTAuthentication]
