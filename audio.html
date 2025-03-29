@@ -71,19 +71,18 @@
     </div>
 
     <script>
-        let socket;
-        let mediaRecorder;
-        let currentStream;
+        let socket, mediaRecorder, cameraStream, liveId, currentStream;
         let isScreenSharing = false;
         let participants = {};
         let userId = "1";
-        let liveId;
-        let cameraStream;
+        let audioContext = null;
+        let processor = null;
+        let operation =true;
         let cameraVideo = document.getElementById("cameraPreview");
         let isCoHostJoin = false;
         let coHostUserId = null;
         let coHostUsername = null;
-        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0MzE3MTQwMSwiaWF0IjoxNzQzMDg1MDAxfQ.cXp4VY3UOom8FsMED6Nn0yBqn4gLvDlpiKMpFawi9zE"; 
+        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0MzM0OTA5NiwiaWF0IjoxNzQzMjYyNjk2fQ.1KJd29FZchoUS8DqNCI8gyZnWUQ73yOwa7XUWDfoKQ8"; 
 
         document.getElementById("start").addEventListener("click", async () => {
             socket = new WebSocket(`ws://127.0.0.1:8000/ws/stream/start/live/${userId}/?token=${encodeURIComponent(token)}`);
@@ -108,87 +107,98 @@
         });
 
         async function startAudioStream() {
-            stopCurrentStream();
+           
+            stopActiveSockets();
             currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const audioContext = new AudioContext();
             const mediaStreamSource = audioContext.createMediaStreamSource(currentStream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
+            if(operation){
+                processor.onaudioprocess = (event) => {
+                    if (!socket || socket.readyState !== WebSocket.OPEN) {
+                        return;
+                    }
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    const int16Array = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        int16Array[i] = inputData[i] * 32767; // Convert float [-1,1] to Int16
+                    }
+                    socket.send(int16Array.buffer); // Send raw PCM data
+                };
 
-            processor.onaudioprocess = (event) => {
-                const inputData = event.inputBuffer.getChannelData(0);
-                const int16Array = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    int16Array[i] = inputData[i] * 32767; // Convert float [-1,1] to Int16
-                }
-                socket.send(int16Array.buffer); // Send raw PCM data
-            };
-
-            mediaStreamSource.connect(processor);
-            processor.connect(audioContext.destination);
-            isScreenSharing = false;
-            document.getElementById("toggleStream").innerText = "Switch to Screen Sharing";
-            socket.send(JSON.stringify({ type: "switching_to_audio", stream: "audio" }));
-
+                mediaStreamSource.connect(processor);
+                processor.connect(audioContext.destination);
+            }
         }
-
+    
         async function startScreenSharing() {
-            stopCurrentStream();
+            stopActiveSockets();
 
             try {
-                // Get screen sharing stream (includes video & optional system audio)
-                currentStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+               
+                if(operation){
+                    // Get screen sharing stream (includes video & optional system audio)
+                    currentStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-                // Capture microphone audio separately
-                const micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+                    // Capture microphone audio separately
+                    const micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
 
-                if (micStream.getAudioTracks().length > 0) {
-                    currentStream.addTrack(micStream.getAudioTracks()[0]); // Merge mic audio into screen stream
+                    if (micStream.getAudioTracks().length > 0) {
+                        currentStream.addTrack(micStream.getAudioTracks()[0]); // Merge mic audio into screen stream
+                    }
+
+                    // Set up screen video recording
+                    mediaRecorder = new MediaRecorder(currentStream, { mimeType: "video/webm; codecs=vp9" });
+                   
+                    mediaRecorder.ondataavailable = async (event) => {
+                        if (event.data.size > 0) {
+                            // Send video data
+                            socket.send(event.data);
+                        }
+                    };
+
+                    mediaRecorder.start(100);
+                    isScreenSharing = true;
+                    document.getElementById("toggleStream").innerText = "Switch to Audio";
+
+                    // Notify backend that screen sharing started
+                    socket.send(JSON.stringify({ type: "switching_to_screen_sharing", stream: "screen" }));
+
+                    // Capture & send raw PCM audio
+                    const audioContext = new AudioContext({ sampleRate: 16000 });
+                    const micSource = audioContext.createMediaStreamSource(micStream);
+                    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                    micSource.connect(processor);
+                    processor.connect(audioContext.destination);
+
+                    processor.onaudioprocess = (event) => {
+                        const inputBuffer = event.inputBuffer.getChannelData(0); // Mono PCM
+                        const int16Array = new Int16Array(inputBuffer.length);
+
+                        for (let i = 0; i < inputBuffer.length; i++) {
+                            int16Array[i] = inputBuffer[i] * 32768; // Convert float to int16
+                        }
+
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                                socket.send(int16Array.buffer);
+                        } else {
+                            return;
+                        }
+                    };
+
+                    // Start camera feed overlay
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    cameraVideo.srcObject = cameraStream;
+                    cameraVideo.style.display = "block";
+                    makeDraggable(cameraVideo);
                 }
-
-                // Set up screen video recording
-                mediaRecorder = new MediaRecorder(currentStream, { mimeType: "video/webm" });
-
-                mediaRecorder.ondataavailable = async (event) => {
-                    if (event.data.size > 0) {
-                        // Send video data
-                        socket.send(event.data);
-                    }
-                };
-
-                mediaRecorder.start(100);
-                isScreenSharing = true;
-                document.getElementById("toggleStream").innerText = "Switch to Audio";
-                socket.send(JSON.stringify({ type: "switching_to_screen_sharing", stream: "screen" }));
-                // Capture & send raw PCM audio
-                const audioContext = new AudioContext({ sampleRate: 16000 });
-                const micSource = audioContext.createMediaStreamSource(micStream);
-                const processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-                micSource.connect(processor);
-                processor.connect(audioContext.destination);
-
-                processor.onaudioprocess = (event) => {
-                    const inputBuffer = event.inputBuffer.getChannelData(0); // Mono PCM
-                    const int16Array = new Int16Array(inputBuffer.length);
-
-                    for (let i = 0; i < inputBuffer.length; i++) {
-                        int16Array[i] = inputBuffer[i] * 32768; // Convert float to int16
-                    }
-
-                    socket.send(int16Array.buffer); // Send PCM audio as raw binary
-                };
-
-                // Start camera feed overlay
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                cameraVideo.srcObject = cameraStream;
-                cameraVideo.style.display = "block";
-                makeDraggable(cameraVideo);
             } catch (error) {
                 console.error("Error starting screen sharing:", error);
             }
         }
 
-        function stopCurrentStream() {
+        function stopActiveSockets() {
             if (mediaRecorder) {
                 mediaRecorder.stop();
             }
@@ -199,15 +209,46 @@
                 cameraStream.getTracks().forEach(track => track.stop());
             }
             cameraVideo.style.display = "none";
+ 
         }
 
-        document.getElementById("toggleStream").addEventListener("click", async () => {
-            if (isScreenSharing) {
-                await startAudioStream();
-            } else {
-                await startScreenSharing();
+        function closeConnections() {
+            if (processor) {
+                processor.disconnect();
+                processor.onaudioprocess = null;
+                processor = null;
             }
-        });
+
+            if (socket) {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: "stream_ended", event_id: liveId }));
+                }
+            }
+
+            if (audioContext) {
+                // audioContext.close().then(() => { audioContext = null; });
+                audioContext.close();
+                audioContext = null;
+            }
+
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                mediaRecorder = null;
+            }
+
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+
+            cameraVideo.style.display = "none";
+                
+        }
 
         function handleEventData(data) {
             if (data.event_id) {
@@ -282,6 +323,13 @@
             if(data.type === "error"){
                 $.jGrowl(data.details, { life: 10000});
             }
+            
+            if(data.type === "stream_ended"){
+                socket.onclose = null;
+                socket.onerror = null;
+                socket.close();
+                socket = null;
+            }
         }
 
         function updateParticipantList() {
@@ -329,13 +377,7 @@
         }
 
         document.getElementById("stop").addEventListener("click", () => {
-            stopCurrentStream();
-
-            if (socket) {
-                socket.send(JSON.stringify({ type: "stream_ended", event_id: liveId }));
-                setTimeout(() => socket.close(), 500);
-            }
-
+           closeConnections();
             document.getElementById("start").disabled = false;
             document.getElementById("stop").disabled = true;
             document.getElementById("toggleStream").disabled = true;
@@ -376,6 +418,22 @@
             }
         }
 
+        document.getElementById("toggleStream").addEventListener("click", async () => {
+            if (isScreenSharing) {
+              
+                await startAudioStream();
+                isScreenSharing = false;
+                document.getElementById("toggleStream").innerText = "Switch to Screen Sharing";
+                socket.send(JSON.stringify({ type: "switching_to_audio", stream: "audio" }));
+            } else {
+                
+                await startScreenSharing();
+                isScreenSharing = true;
+                document.getElementById("toggleStream").innerText = "Switch to Audio";
+                socket.send(JSON.stringify({ type: "switching_to_screen_sharing", stream: "screen" }));
+                
+            }
+        });
     </script>
    
 </body>

@@ -843,13 +843,22 @@ class StreamingConsumer(AsyncWebsocketConsumer):
             room.end_timestamp = now()
             await self.save_room(room)
 
-            """Host ends the stream"""
+            # Ensure the WebSocket is still open before sending messages
+            if self.scope["type"] == "websocket" and not self.scope.get("_closed", False):
+                await self.send(text_data=json.dumps({
+                    "type": "stream_ended",
+                    "message": "The stream has ended."
+                }))
+
+            # Notify the group
             await self.channel_layer.group_send(
                 self.room_group_name, {
                     "type": "stream_ended",
-                    "message": "The stream has ended. The broadcaster has closed the session.",
+                    "message": "The broadcaster has closed the session.",
                 }
             )
+
+            # Close the WebSocket connection properly
             await self.close()
 
     async def stream_ended(self, event):
@@ -866,7 +875,7 @@ class StreamingConsumer(AsyncWebsocketConsumer):
         # Fetch active streams as dictionaries
         active_streams = await sync_to_async(
             lambda: list(Room.objects.filter(status="active").values(
-                "room_id", "created_at", "total_participants", 
+                "room_id", "user_id", "created_at", "total_participants",
                 "status", "start_timestamp", "type"
             )), 
             thread_sensitive=False
