@@ -20,6 +20,7 @@ DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'apps.pluglr.com', '*']  # Add your domain
 
 
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -141,21 +142,38 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
-
-
+# CORS Settings
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS",
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
 ]
-
+# CORS_ALLOW_HEADERS = ['*']  # For development, allow all headers
 CORS_ALLOW_HEADERS = [
     "Accept",
     "Content-Type",
 ]
+
+# For production
+CORS_ALLOWED_ORIGINS = [
+    "http://apps.pluglr.com",
+    "https://apps.pluglr.com",
+    "http://localhost:8000",
+]
+
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = [
+    "http://apps.pluglr.com",
+    "https://apps.pluglr.com",
+]
+
+
+
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
