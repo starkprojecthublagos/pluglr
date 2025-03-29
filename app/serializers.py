@@ -16,25 +16,18 @@ class CustomUserSerializer(serializers.ModelSerializer):
         )
         return user
 
-
-class AccountVerificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AccountVerification
-        fields = ['user', 'AccountVerification', 'created_at', 'expires_at']
-
-
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['firstname', 'lastname', 'mobile', 'username', 'state']
+        fields = ['first_name', 'last_name', 'mobile', 'username', 'state']
         extra_kwargs = {
-            'firstname': {'required': False},
-            'lastname': {'required': False},
+            'first_name': {'required': False},
+            'last_name': {'required': False},
             'username': {'required': False},
             'mobile': {'required': False},
             'state': {'required': False},
         }
-
+    
     def validate_mobile(self, value):
         """
         Validate the mobile number.
@@ -43,7 +36,7 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Mobile number must contain only digits.")
         return value
-
+    
     def validate_username(self, value):
         """
         Validate the username.
@@ -51,7 +44,6 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         if value and CustomUser.objects.filter(username=value).exclude(id=self.instance.id).exists():
             raise serializers.ValidationError("Username is already taken.")
         return value
-
 
 class UserDetailSerializer(ModelSerializer):
     class Meta:
