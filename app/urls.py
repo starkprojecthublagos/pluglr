@@ -1,7 +1,9 @@
 from django.urls import path, include
+from django.http import HttpResponse
 from .views import RegisterAPI, VerifyOTPAPI,UpdateProfileView, UploadProfilePictureView, AuthUserChangePasswordAPI, PasswordUpdateAPI, CompleteProfileAPI, LoginAPI, FindUserByIdAPI, ResendOTPAPI, SendWelcomeEmailAPI, GenerateRefreshTokenAPI
 
 urlpatterns = [
+    path('', lambda request: HttpResponse("Welcome to the API"), name='home'),
     path('api/v1/auth/register/', RegisterAPI.as_view(), name='register'),
     path('api/v1/auth/login/', LoginAPI.as_view(), name='login'),
     path('api/v1/auth/verify-otp/', VerifyOTPAPI.as_view(), name='verify_otp'),
