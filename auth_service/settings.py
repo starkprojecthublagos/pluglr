@@ -143,7 +143,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 # CORS Settings
+CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
+
 CORS_ALLOW_METHODS = [
     'GET',
     'POST',
@@ -152,11 +154,11 @@ CORS_ALLOW_METHODS = [
     'DELETE',
     'OPTIONS',
 ]
-# CORS_ALLOW_HEADERS = ['*']  # For development, allow all headers
-CORS_ALLOW_HEADERS = [
-    "Accept",
-    "Content-Type",
-]
+CORS_ALLOW_HEADERS = ['*']  # For development, allow all headers
+# CORS_ALLOW_HEADERS = [
+#     "Accept",
+#     "Content-Type",
+# ]
 
 # For production
 CORS_ALLOWED_ORIGINS = [
@@ -204,8 +206,8 @@ AUTHENTICATION_BACKENDS = [
 AUTH_USER_MODEL = 'app.CustomUser'
 
 # Optional: Allow credentials (cookies, HTTP authentication)
-CORS_ALLOW_CREDENTIALS = True
-CORS_ORIGIN_ALLOW_ALL = True
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ORIGIN_ALLOW_ALL = True
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
