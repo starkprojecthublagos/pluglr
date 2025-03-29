@@ -265,6 +265,21 @@ class VerifyOTPAPI(APIView):
 
 
 # class CompleteProfileAPI(APIView):
+#     authentication_classes = [CustomJWTAuthentication]
+
+#     def put(self, request):
+#         user = request.user
+
+#         # Validate and update profile data
+#         serializer = ProfileUpdateSerializer(
+#             user, data=request.data, partial=True)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response({"message": "Profile updated successfully."}, status=status.HTTP_200_OK)
+#         else:
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class CompleteProfileAPI(APIView):
     authentication_classes = [CustomJWTAuthentication]
     permission_classes = [IsAuthenticated]  # Add this to require authentication
 
@@ -283,6 +298,7 @@ class VerifyOTPAPI(APIView):
             return Response({"message": "Profile updated successfully."}, status=status.HTTP_200_OK)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
 
 class FindUserByIdAPI(APIView):
     authentication_classes = [CustomJWTAuthentication]
