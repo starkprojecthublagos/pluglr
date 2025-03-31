@@ -165,6 +165,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://apps.pluglr.com",
     "https://apps.pluglr.com",
     "http://localhost:8000",
+    "http://apps.pluglr.com",
+    "http://apps.pluglr.com:8080",
 ]
 
 # CSRF Settings
