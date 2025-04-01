@@ -9,7 +9,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DEBUG=1
       - SECRET_KEY=your_secret_key_here
