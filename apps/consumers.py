@@ -1,7 +1,6 @@
 import json
 import uuid
 import logging
-import aiohttp
 import redis
 import jwt
 import numpy as np
@@ -10,6 +9,7 @@ from django.conf import settings
 from django.utils.timezone import now
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
+from accounts.models import CustomUser
 from .models import Participant, Room, StreamType
 from django.core.exceptions import ObjectDoesNotExist
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -101,71 +101,86 @@ class StreamingConsumer(AsyncWebsocketConsumer):
             if redis_user:
                 user_details = json.loads(redis_user)
             else:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"http://localhost:8001/api/v1/user/id/{extracted_user_id}") as response:
-                        if response.status != 200:
-                            await self.accept()
-                            await self.send(json.dumps({
-                                "status":302,
-                                "type": "error",
-                                "message": "User not found",
-                                "details": "Sorry. You currenctly not registered in our system."
-                            }))
-                            await self.close()
-                            return
+                # If the user is not found in Redis, fetch user details from the database
+                try:
+                    # Fetch the user from the database
+                    user = await database_sync_to_async(CustomUser.objects.get)(id=extracted_user_id)
+                    user_details = {
+                        "id": str(user.id),
+                        "username": user.username or "Host",  # Fallback to "Host" if no username
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "mobile": user.mobile,
+                        "state": user.state,
+                        "profile_picture": user.profile_picture.url if user.profile_picture else None,
+                    }
 
-                        user_data = await response.json()
-                        user_details = user_data.get("data", {})
-                        fetched_user_id = str(user_details.get("id"))
-                        self.username = user_details.get("username", "Host")
+                except CustomUser.DoesNotExist:
+                    # If user is not found in the database, return an error
+                    await self.accept()
+                    await self.send(json.dumps({
+                        "status": 302,
+                        "type": "error",
+                        "message": "User not found",
+                        "details": "Sorry, you are not registered in our system."
+                    }))
+                    await self.close()
+                    return  # Exit the WebSocket connection
 
-                        broadcaster_data = {
-                            "user_id": fetched_user_id,
-                            "username": self.username,
-                        }
+                # Verify the user ID matches the current user ID
+                fetched_user_id = str(user_details["id"])
+                self.username = user_details["username"]
 
-                        if fetched_user_id != str(self.user_id):
-                            await self.accept()
-                            await self.send(json.dumps({
-                                "status":401,
-                                "type": "error",
-                                "message": "Unauthorized User.",
-                                "details": "Your request Id does not match with our verified user id."
-                                }))
-                            await self.close()
-                            return
+                if fetched_user_id != str(self.user_id):
+                    # If the user ID doesn't match, return an error and close the connection
+                    await self.accept()
+                    await self.send(json.dumps({
+                        "status": 401,
+                        "type": "error",
+                        "message": "Unauthorized User.",
+                        "details": "Your request ID does not match the verified user ID."
+                    }))
+                    await self.close()
+                    return
 
-                        redis_client.set(
-                            f"broadcaster:{extracted_user_id}", json.dumps(broadcaster_data))
+                # Store broadcaster data in Redis
+                broadcaster_data = {
+                    "user_id": fetched_user_id,
+                    "username": self.username,
+                }
+                redis_client.set(f"broadcaster:{extracted_user_id}", json.dumps(broadcaster_data))
 
-                        # Accept the connection before sending anything
-                        await self.accept()
+                # Accept the WebSocket connection before sending anything
+                await self.accept()
 
-                        # Host starts a new stream
-                        self.event_id = str(uuid.uuid4())
-                        self.user_id = fetched_user_id
-                        # Save to Room table
-                        await self.create_room(self.event_id, self.user_id)
+                # Host starts a new stream
+                self.event_id = str(uuid.uuid4())
+                self.user_id = fetched_user_id
 
-                        active_streams[self.event_id] = {
-                            "host": self.user_id,
-                            "status": "active",
-                            "participants": {},
-                            "chat_history": [],
-                        }
-                        self.room_group_name = f"user_audio_live_{self.event_id}"
+                # Save to Room table (replace with your actual logic for saving to the database)
+                await self.create_room(self.event_id, self.user_id)
 
-                        # Add host to WebSocket group
-                        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
-                        await self.channel_layer.group_add(f"user_{self.user_id}", self.channel_name)
+                active_streams[self.event_id] = {
+                    "host": self.user_id,
+                    "status": "active",
+                    "participants": {},
+                    "chat_history": [],
+                }
 
-                        # Generate and send the streaming link
-                        stream_link = await self.generate_streaming_link()
-                        await self.send(text_data=json.dumps({
-                            "type": "stream_link",
-                            "event_id": self.event_id,
-                            "join_url": stream_link
-                        }))
+                self.room_group_name = f"user_audio_live_{self.event_id}"
+
+                # Add host to WebSocket group
+                await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+                await self.channel_layer.group_add(f"user_{self.user_id}", self.channel_name)
+
+                # Generate and send the streaming link
+                stream_link = await self.generate_streaming_link()
+                await self.send(text_data=json.dumps({
+                    "type": "stream_link",
+                    "event_id": self.event_id,
+                    "join_url": stream_link
+                }))
 
         # Participant joins existing stream
         elif self.event_id is not None:
@@ -510,11 +525,11 @@ class StreamingConsumer(AsyncWebsocketConsumer):
                     active_audio_streams[self.participant_id] = normalized_data
 
                     # Mix all active audio streams
-                    if len(active_audio_streams) > 1:
-                        mixed_audio = sum(active_audio_streams.values()) / len(active_audio_streams)
-                        mixed_audio = np.clip(mixed_audio, -1.0, 1.0)  # Prevent clipping
-                    else:
-                        mixed_audio = normalized_data  # Single speaker
+                    # if len(active_audio_streams) > 1:
+                    #     mixed_audio = sum(active_audio_streams.values()) / len(active_audio_streams)
+                    #     mixed_audio = np.clip(mixed_audio, -1.0, 1.0)  # Prevent clipping
+                    # else:
+                    mixed_audio = normalized_data  # Single speaker
 
                     # Convert back to 16-bit PCM
                     processed_bytes = (mixed_audio * 32768).astype(np.int16).tobytes()
@@ -547,7 +562,7 @@ class StreamingConsumer(AsyncWebsocketConsumer):
 
     async def binary_data_received(self, event):
         """Send binary data (audio/video) to clients with correct event type."""
-        # await self.send(text_data=json.dumps({"event_type": event["event_type"]}))# Send metadata first
+        await self.send(text_data=json.dumps({"event_type": event["event_type"]}))# Send metadata first
         await self.send(bytes_data=event["bytes_data"])  # Then send the binary data
 
     async def switch_streaming_mode(self, mode):

@@ -18,7 +18,6 @@ class VisibilityChoices(models.TextChoices):
     PUBLIC = "Public", "Public"
     PRIVATE = "Private", "Private"
 
-
 class UploadAudioRecord(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     userId = models.IntegerField()

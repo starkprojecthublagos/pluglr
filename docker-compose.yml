@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    command: >
+      sh -c "mkdir -p /app/static &&
+             python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8001"
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8001"
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=PyHqX87vlmxhHC5MBzdGMze14XlhUXckHnY32Lnzgk4PyHqX87vlmxhHC5MBzdGMze14XlhUXckHnY32Lnzgk4
+      - DATABASE_URL=mysql://pluglr_admin:Rubies%402030!@db:3306/pluglr_auth 
+      - REDIS_URL=redis://redis:6379/0
+      - KMS_URL=ws://kurento:8888/kurento
+      - ANT_MEDIA_URL=http://antmedia:5080
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kurento:
+        condition: service_started
+      antmedia:
+        condition: service_started
+
+  db:
+    image: mysql:latest
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: pluglr_auth
+      MYSQL_USER: pluglr_admin
+      MYSQL_PASSWORD: Rubies@2030!
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d 
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6380:6379"
+    restart: always
+
+  kurento:
+    image: kurento/kurento-media-server
+    container_name: kurento
+    network_mode: "host"
+    restart: always
+
+  antmedia:
+    image: antmedia/enterprise
+    container_name: antmedia
+    ports:
+      - "5080:5080"
+    restart: always
+
+volumes:
+  mysql_data:
