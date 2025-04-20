@@ -59,6 +59,7 @@ public class SecurityConfiguration {
                     auth.requestMatchers("/account/auth/**").permitAll();
                     auth.requestMatchers("/error/**").permitAll();
                     auth.requestMatchers("/ws/**").permitAll();
+                    auth.requestMatchers("/home/**").permitAll();
                     auth.anyRequest().authenticated();
                 })
                 .oauth2ResourceServer(oauth2 -> oauth2

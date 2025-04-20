@@ -30,6 +30,7 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\excepti
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\VerificationToken.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\repository\PasswordResetTokenRepository.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\repository\VerificationTokenRepository.java
+C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\controllers\HomeController.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\PasswordResetToken.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebClientConfig.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\sessions\WebSocketSessionManager.java
