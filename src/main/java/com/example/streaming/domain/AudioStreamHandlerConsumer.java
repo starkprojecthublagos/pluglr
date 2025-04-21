@@ -757,7 +757,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     
     // Updated implementation that gets user details internally
     private String generateStreamingLink(String eventId) {
-        return String.format("ws://localhost:8011/ws/stream/live/join/event/%s/", eventId);
+        return String.format("wss://apps.pluglr.com/ws/stream/live/join/event/%s/", eventId);
     }
     
     
@@ -1104,14 +1104,14 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                     }
                 }
             }
-            ObjectMapper objectMapper = new ObjectMapper();
-            String redisPayload = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(roomData);
+            // ObjectMapper objectMapper = new ObjectMapper();
+            // String redisPayload = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(roomData);
 
-            System.out.println("==== Redis Data to be Stored ====");
-            System.out.println(redisPayload);
-            System.out.println("=================================");
-            // 7. Broadcast updated participant list to everyone
-            broadcastParticipantList(eventId);
+            // System.out.println("==== Redis Data to be Stored ====");
+            // System.out.println(redisPayload);
+            // System.out.println("=================================");
+            // // 7. Broadcast updated participant list to everyone
+            // broadcastParticipantList(eventId);
 
         } catch (Exception e) {
             System.out.println("Error handling co-host acceptance: " + e.getMessage());

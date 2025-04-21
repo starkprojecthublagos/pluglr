@@ -83,7 +83,7 @@
         let socket, mediaRecorder, cameraStream, liveId;
         let isScreenSharing = false;
         let participants = {};
-        let userId = "1001";
+        let userId = "1";
         let audioContext = null;
         let processor = null;
         let operation =true;
@@ -91,9 +91,9 @@
         let isCoHostJoin = false;
         let coHostUserId = null;
         let coHostUsername = null;
-        let token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJJZCI6MTAwMSwic3ViIjoiYWxleCIsImlhdCI6MTc0NDg4MzA5NSwiZXhwIjoxNzQ3NDc1MDk1fQ.SkPYjpP1TucD665DMw8LsYS9hfv4gwwwGZwtgNkBHuU"
+        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0NTM0MjM4MywiaWF0IjoxNzQ1MjU1OTgzfQ.Cz9ES5eaFUcVGAjQdEiBsHThCcisWmLyjfvaoQ3Ir8E"
         document.getElementById("start").addEventListener("click", async () => {
-            socket = new WebSocket(`ws://localhost:8011/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
+            socket = new WebSocket(`wss://apps.pluglr.com/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
             socket.onopen = () => console.log("WebSocket connected!");
 
             socket.onmessage = async (event) => {

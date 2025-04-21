@@ -12,16 +12,10 @@ services:
       - SPRING_DATASOURCE_PASSWORD=Rubies@2030!
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - SPRING_RABBITMQ_PORT=5672
-      - SPRING_RABBITMQ_USERNAME=guest
-      - SPRING_RABBITMQ_PASSWORD=guest
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
-      rabbitmq:
         condition: service_started
     networks:
       - pluglr-springboot-network  
@@ -53,16 +47,6 @@ services:
     container_name: redis
     ports:
       - "6380:6379"
-    restart: always
-    networks:
-      - pluglr-springboot-network
-
-  rabbitmq:
-    image: rabbitmq:management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     restart: always
     networks:
       - pluglr-springboot-network
