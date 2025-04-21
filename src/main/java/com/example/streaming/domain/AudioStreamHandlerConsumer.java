@@ -20,20 +20,18 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
+import com.example.streaming.clients.UserServiceClient;
+import com.example.streaming.dtos.UserDataDTO;
 import com.example.streaming.enums.EventStatus;
 import com.example.streaming.enums.StreamType;
 import com.example.streaming.model.Event;
 import com.example.streaming.model.Participants;
-import com.example.streaming.model.Users;
 import com.example.streaming.repository.EventRepository;
 import com.example.streaming.repository.ParticipantRepository;
-import com.example.streaming.repository.UsersRepository;
 import com.example.streaming.responses.StreamLinkMessage;
 import com.example.streaming.sessions.WebSocketSessionManager;
-import com.example.streaming.utils.JwtTokenProvider;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -53,16 +51,13 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
-    private JwtTokenProvider jwtTokenProvider;
-
-    @Autowired
     private EventRepository eventRepository;
 
     @Autowired
     private ParticipantRepository participantRepository;
 
     @Autowired
-    private UsersRepository userRepository;
+    private UserServiceClient userServiceClient;
 
     @Autowired
     private WebSocketSessionManager sessionManager;
@@ -89,12 +84,12 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
         String userId = pathVariables.get("userId");
 
-        String token = extractTokenFromQuery(uri.getQuery());
-
         if (segments.length == 6 && segments[5].matches("\\d+") && segments.length <= 6) {
-            String hosterId = segments[5];
+            String exractedHostId = segments[5];
+            long hosterId = Long.parseLong(exractedHostId);
+
             if (userId != null && !userId.isEmpty()) {
-                handleHostConnection(session, hosterId, token);
+                handleHostConnection(session, hosterId);
                 session.getAttributes().put("userId", userId);
                 session.getAttributes().put("eventId", "event-" + userId);
             }
@@ -351,34 +346,21 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        System.out.println("Disconnected: " + session.getId());
         sessions.remove(session.getId());
     }
 
    
-    private void handleHostConnection(WebSocketSession session, String userId, String token) throws IOException {
-        // JWT validation
-        if (token == null || token.isEmpty()) {
-            sendErrorAndClose(session, "JWT token is missing", "Authentication required");
+    private void handleHostConnection(WebSocketSession session, Long userId) throws IOException {
+        UserDataDTO userDetails = userServiceClient.getUserById(userId);
+        if(userDetails.getData() ==null){
+            sendErrorAndClose(session, "Unauthorized", "User not found.");
             return;
         }
-
-        if (!jwtTokenProvider.validateToken(token)) {
-            sendErrorAndClose(session, "Invalid token", "Invalid or expired token");
-            return;
-        }
-        
-        String extractedUserId = jwtTokenProvider.getUserIdFromJWT(token);
-
-        if (!extractedUserId.equals(userId)) {
-            sendErrorAndClose(session, "Unauthorized", "User ID mismatch");
-            return;
-        }
-
+       
         // Create new event
         Event event = new Event();
         event.setRoomId(UUID.randomUUID().toString());
-        event.setHostId(userId);
+        event.setHostId(userId.toString());
         event.setStatus(EventStatus.active);
         event.setStreamType(StreamType.AUDIO);
         eventRepository.save(event);
@@ -391,21 +373,13 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         session.getAttributes().put("isHost", true);
         session.getAttributes().put("eventId", event.getRoomId());
 
-        long userIdLong = Long.parseLong(userId);
-
-        Optional<Users> users = userRepository.findById(userIdLong);
-        if (!users.isPresent()) {
-            sendErrorAndClose(session, "User not found",
-                    "User not found");
-            return;
-        }
         ObjectMapper mapper = new ObjectMapper();
 
         // hostDetails
         Map<String, Object> hostDetails = new HashMap<>();
         hostDetails.put("startedAt", Instant.now().toString());
         hostDetails.put("userId", userId);
-        hostDetails.put("username", users.get().getUsername());
+        hostDetails.put("username", userDetails.getData().getUsername());
 
         // cohosts map 
         Map<String, Object> cohosts = new HashMap<>();
@@ -440,7 +414,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         sessionToEventMap.put(sessionId, event.getRoomId());
 
         // Send stream link
-        String joinUrl = generateStreamingLink(event.getRoomId(), userId);
+        String joinUrl = generateStreamingLink(event.getRoomId());
         sendMessage(session, new StreamLinkMessage("stream_link", event.getRoomId(), joinUrl));
     }
 
@@ -675,7 +649,9 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
             // 5. Send to host
             Map<String, Object> hostDetails = (Map<String, Object>) roomData.get("hostDetails");
-     
+            ObjectMapper objectMapper = new ObjectMapper();
+            String redisPayload = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(roomData);
+
             if (hostDetails != null) {
                 String hostSessionKey = "event_host_session:" + roomData.get("hostId");
                 String hostSessionId = stringRedisTemplate.opsForValue().get(hostSessionKey);
@@ -730,7 +706,8 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             // 4. Send to host first (same approach as broadcastParticipantList)
             Map<String, Object> hostDetails = (Map<String, Object>) roomData.get("hostDetails");
             if (hostDetails != null) {
-                String hostId = (String) roomData.get("hostId");
+                Object hostIdObj = roomData.get("hostId");
+                String hostId = hostIdObj != null ? hostIdObj.toString() : null;
                 if (hostId != null) {
                     String hostSessionKey = "event_host_session:" + hostId;
                     String hostSessionId = stringRedisTemplate.opsForValue().get(hostSessionKey);
@@ -754,7 +731,8 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                     .get("participants");
             if (participantsMap != null) {
                 for (Map<String, Object> participant : participantsMap.values()) {
-                    String participantId = (String) participant.get("participantId");
+                    Object participantIdObj = participant.get("participantId");
+                    String participantId = participantIdObj != null ? participantIdObj.toString() : null;
                     String sessionKey = "event_participant_session:" + participantId;
                     String sessionId = stringRedisTemplate.opsForValue().get(sessionKey);
 
@@ -778,16 +756,8 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     
     
     // Updated implementation that gets user details internally
-    private String generateStreamingLink(String eventId, String userId) {
-        long userIdLong = Long.parseLong(userId);
-
-        Users currentUser = userRepository.findById(userIdLong)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-
-        return String.format("ws://localhost:8011/ws/stream/live/join/event/%s/%s/%s/",
-                eventId,
-                currentUser.getUsername(),
-                currentUser.getId());
+    private String generateStreamingLink(String eventId) {
+        return String.format("ws://localhost:8011/ws/stream/live/join/event/%s/", eventId);
     }
     
     
@@ -806,21 +776,6 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             pathVariables.put("username", parts[6]);
 
         return pathVariables;
-    }
-
-    
-    private String extractTokenFromQuery(String query) {
-        if (query == null || query.isEmpty()) {
-            return null;
-        }
-
-        String[] params = query.split("&");
-        for (String param : params) {
-            if (param.startsWith("token=")) {
-                return param.substring(6);
-            }
-        }
-        return null;
     }
 
     
@@ -1606,13 +1561,13 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     private void handleChatMessage(String eventId, String message, String participantId) {
         try {
             long userIdLong = Long.parseLong(participantId);
-            Optional<Users> userdetails = userRepository.findById(userIdLong);
-
+            UserDataDTO userdetails = userServiceClient.getUserById(userIdLong);
+           
             // 1. Prepare chat message payload
             Map<String, Object> chatPayload = new HashMap<>();
             chatPayload.put("type", "chat_message");
             chatPayload.put("message", message);
-            chatPayload.put("username", userdetails.get().getUsername());
+            chatPayload.put("username", userdetails.getData().getUsername());
             chatPayload.put("user_id", participantId);
             chatPayload.put("timestamp", Instant.now().toString());
 
@@ -1779,6 +1734,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             hostMessage.put("cohost_id", participantId);
             hostMessage.put("isSpeaking", isSpeaking);
             // Include cohost username for better UX
+            @SuppressWarnings("null")
             String cohostUsername = participants.values().stream()
                     .filter(p -> participantId.equals(p.get("participantId")))
                     .findFirst()

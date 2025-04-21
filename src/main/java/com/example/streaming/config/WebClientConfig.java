@@ -16,8 +16,8 @@ import reactor.netty.tcp.TcpClient;
 @Configuration
 public class WebClientConfig {
 
-    @Value("${notification-service.base-url}")
-    private String notificationServiceBaseUrl;
+    @Value("${auth-service.base-url}")
+    private String authServiceBaseUrl;
 
     @Bean
     public WebClient.Builder webClientBuilder() {
@@ -39,9 +39,9 @@ public class WebClientConfig {
     }
 
     @Bean
-    public WebClient notificationServiceWebClient(WebClient.Builder webClientBuilder) {
+    public WebClient authServiceWebClient(WebClient.Builder webClientBuilder) {
         return webClientBuilder
-                .baseUrl(notificationServiceBaseUrl)
+                .baseUrl(authServiceBaseUrl) 
                 .build();
     }
 }

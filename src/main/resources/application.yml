@@ -27,20 +27,6 @@ spring:
     port: 5672
     username: guest
     password: guest
-    
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: artexnetworkservice@gmail.com
-    password: kvhortcwavetumzu
-    properties:
-      mail:
-        transport:
-          protocol: smtp
-        smtp:
-          auth: true
-          starttls:
-            enable: true
   
   thymeleaf:
     prefix: classpath:/templates/
@@ -50,15 +36,6 @@ spring:
     cache: false
 
 
-jwt:
-  secret-key: lcBCilFEQT0SWEZcCQhGx2UaCZcxPx4bYBfrGM0DVKDJycK2UL4dDJqAkZ8r4IBQxSa3S2wlTVlnVVzvzP5sfzPtLUournmEY2N3ZGVnQ1BtWEF0anZ0aDNLNHJhaHh9IkFVaj0PXA==
-
-iot:
-  platform:
-    customer:
-      service:
-        email: artexnetworkservice@gmail.com
-
 file:
   upload-dir: src/main/resources/static/image
 
@@ -66,12 +43,8 @@ web:
     resources:
       static-locations: classpath:/static/
 
-app:
-  jwt:
-    secret: lcBCilFEQT0SWEZcCQhGx2UaCZcxPx4bYBfrGM0DVKDJycK2UL4dDJqAkZ8r4IBQxSa3S2wlTVlnVVzvzP5sfzPtLUournmEY2N3ZGVnQ1BtWEF0anZ0aDNLNHJhaHh9IkFVaj0PXA==
-
-notification-service:
-  base-url: http://localhost:8079
+auth-service:
+  base-url: http://localhost:8000
 
 redis:
   host: localhost
