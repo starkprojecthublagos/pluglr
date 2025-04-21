@@ -8,11 +8,11 @@ public class ParticipantController {
     
     @GetMapping("/participant") 
     public String participant() {
-        return "about"; 
+        return "participants"; 
     }
 
     @GetMapping("/host") 
     public String host() {
-        return "host"; 
+        return "audio"; 
     }
 }

@@ -18,6 +18,7 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\utils\K
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\FileStorageConfig.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\exceptions\UserClientNotFoundException.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\exceptions\GlobalExceptionHandler.java
+C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\controllers\ParticipantController.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\enums\AttemptType.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Participants.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\clients\UserServiceClient.java
