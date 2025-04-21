@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Participants Live Streaming</title>
+    <link th:href="@{/css/bootstrap.min.css}" rel="stylesheet">
+    <link th:href="@{/css/jquery.jgrowl.min.css}" rel="stylesheet">
+    <script th:src="@{/js/bootstrap.bundle.min.js}"></script>
+    <script th:src="@{/js/jquery.min.js}"></script>
+    <script th:src="@{/js/jquery.jgrowl.min.js}"></script>
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        #messages {
+            border: 1px solid #ccc;
+            height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #fff;
+        }
+        .participant-list {
+            list-style: none;
+            padding: 0;
+        }
+        .participant-list li {
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            margin-bottom: 5px;
+        }
+        #mic-status-indicator {
+            font-size: 1.2rem;
+            margin-right: 10px;
+            transition: color 0.3s ease;
+        }
+
+        #volume-meter {
+            width: 100px;
+            height: 5px;
+            background: #ddd;
+            margin-top: 5px;
+        }
+
+        #volume-level {
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.1s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h3>Live Video Stream</h3>
+        <video id="screenShareVideo" autoplay playsinline style="width:60%; border: 1px solid #000;"></video>
+        <br/>
+        <h2 class="text-primary">Live Streaming</h2>
+        <input type="text" id="wsUrl" class="form-control" placeholder="Enter WebSocket Event Link">
+        <div class="d-flex gap-3">
+            <button id="connect" class="btn btn-success mt-2">Join Event</button>
+            <button id="leave" class="btn btn-secondary mt-2 btn-xs d-none">Leave Live</button>
+        </div>
+       
+        <button type="button" class="btn btn-warning d-none btn-xs" id="leaveCohost" >Leave as Co-host</button>
+        <h3>Participants</h3>
+        <p id="participants-count" class="fw-bold">Participants: 0</p>
+        <ul id="participant-list" class="participant-list"></ul>
+        <!-- Add this to your participant HTML -->
+        <div id="audio-controls">
+            <span id="mic-status-indicator">🎤 Off</span>
+            <div id="cohost-controls" class="d-none">
+                <button id="leave-cohost-btn" class="btn btn-danger btn-sm">Leave as Co-host</button>
+            </div>
+        </div>
+
+        <!-- Volume meter (optional) -->
+        <div id="volume-meter" class="d-none">
+            <div id="volume-level" style="width: 0%"></div>
+        </div>
+        <h3>Chat</h3>
+        <div id="chat-container">
+            <div id="messages"></div>
+            <input type="text" id="messageInput" class="form-control mt-2" placeholder="Type a message...">
+            <button onclick="sendMessage()" class="btn btn-primary mt-2">Send</button>
+        </div>
+    </div>
+    
+    <!-- Cohost Invite Modal -->
+    <div class="modal fade" id="cohostInviteModal" tabindex="-1" aria-labelledby="cohostInviteLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cohostInviteLabel">Cohost Invitation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="cohostInviteMessage"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" id="declineCohost">Decline</button>
+                    <button type="button" class="btn btn-success" id="acceptCohost">Accept</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for audio control
+        let isSpeaking = false;
+        let currentStream = null;
+        let mediaStreamSource = null;
+        let audioProcessor = null;
+        let isCohost = false;
+        let socket;
+        const mediaSource = new MediaSource();
+        let sourceBuffer = null;
+        let mediaRecorder;
+        let screenVideo = document.getElementById("screenShareVideo"); 
+        let mediaQueue = []; 
+        const messagesDiv = document.getElementById("messages");
+        const acceptBtn = document.getElementById("acceptCohost");
+        const declineBtn = document.getElementById("declineCohost");
+        const leaveBtn = document.getElementById("leaveCohost");
+        const list = document.getElementById("participant-list");
+        let leaveButton = document.getElementById("leave");
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let audioQueue = [];
+        let participant_user_id = ''; 
+        let username = '';
+        let lastEventType = null;
+        let room_id = null;
+        // Set up MediaSource for screen sharing
+        mediaSource.addEventListener('sourceopen', () => {
+            sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs=vp9');
+        });
+
+        screenVideo.src = URL.createObjectURL(mediaSource);
+
+        function getUserIdFromWsUrl(wsUrl) {
+            const urlParts = wsUrl.split("/");
+            var data = ([urlParts[10], urlParts[9], urlParts[8]]);
+            return data; 
+        }
+
+        document.getElementById("connect").addEventListener("click", () => {
+            const wsUrl = document.getElementById("wsUrl").value;
+            const userDetails = getUserIdFromWsUrl(wsUrl);
+            participant_user_id = userDetails[0];
+            username = userDetails[1];
+            room_id = userDetails[2];
+          
+            if (!wsUrl) {
+                $.jGrowl("Please enter a WebSocket URL", { life: 10000});
+                return;
+            }
+
+            socket = new WebSocket(wsUrl);
+            socket.binaryType = "blob";
+            socket.onopen = () => {
+                showLeaveButton();
+            };
+
+            // WebSocket message handler for user/co-host side
+            socket.onmessage = async (event) => {
+                if (typeof event.data === "string") {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === "stream_link") {
+                            // Handle host audio stream
+                            const blob = event.data;
+                            if (blob instanceof Blob) {
+                                const arrayBuffer = await blob.arrayBuffer();
+                                const int16Samples = new Int16Array(arrayBuffer);
+                                const wavBlob = encodeWAV(int16Samples, 16000); 
+                                const wavArrayBuffer = await wavBlob.arrayBuffer();
+                                playDDAudio(wavArrayBuffer);
+                            }
+                        }
+            
+                        // Handle host speaking status (to mute co-host when host is speaking)
+                        else if (data.type === "host_audio_status") {
+                            if (isCohost) {
+                                toggleMicrophone(!data.isSpeaking);
+                            }
+                        }
+                        
+                        handleEventData(data);
+                    } catch (error) {
+                        console.error("Error parsing WebSocket message:", error);
+                    }
+                } 
+                // Handle binary audio data (from host or other co-hosts)
+                else if (event.data instanceof ArrayBuffer) {
+                    if (!isSpeaking) {  // Only play audio if we're not currently speaking
+                        const int16Samples = new Int16Array(event.data);
+                        const wavBlob = encodeWAV(int16Samples, 16000);
+                        const wavArrayBuffer = await wavBlob.arrayBuffer();
+                        playDDAudio(wavArrayBuffer);
+                    }
+                }
+            };
+
+
+            socket.onclose = () => {
+                hideLeaveButton(); 
+            };
+
+            socket.onerror = (error) => {
+                $.jGrowl("WebSocket error. Please try again", { life: 10000});
+            };
+        });
+
+        function playDDAudio(arrayBuffer) {
+            audioContext.decodeAudioData(arrayBuffer.slice(0), (audioBuffer) => {
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+            }, (error) => {
+                console.error("❌ Failed to decode audio", error);
+            });
+        }
+
+        // WAV encoder
+        function encodeWAV(samples, sampleRate = 16000) {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            function writeString(view, offset, str) {
+                for (let i = 0; i < str.length; i++) {
+                    view.setUint8(offset + i, str.charCodeAt(i));
+                }
+            }
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + samples.length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true); // PCM format chunk size
+            view.setUint16(20, 1, true);  // PCM format
+            view.setUint16(22, 1, true);  // mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true); // byteRate
+            view.setUint16(32, 2, true); // blockAlign
+            view.setUint16(34, 16, true); // bits per sample
+            writeString(view, 36, 'data');
+            view.setUint32(40, samples.length * 2, true);
+
+            for (let i = 0; i < samples.length; i++) {
+                view.setInt16(44 + i * 2, samples[i], true); // little-endian
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+
+
+        // Function to show the "Leave Live" button
+        function showLeaveButton() {
+            leaveButton.addEventListener("click", leaveLiveStream);
+            leaveButton.classList.remove("d-none");
+        }
+
+        // Function to hide the "Leave Live" button
+        function hideLeaveButton() {
+            leaveButton.classList.add("d-none");
+        }
+
+        // Function to handle leaving the live stream
+        function leaveLiveStream() {
+            const data  = {
+                "type": "leave_room",
+                "event_id": room_id,
+                "user_id": participant_user_id
+            };
+            sendWebSocketMessage(data);
+            if (socket) {
+                socket.close();
+            }
+            hideLeaveButton();
+            $.jGrowl("You have left the live stream.", { life: 10000});
+            $.jGrowl("Disconnected from WebSocket", { life: 20000})
+        }
+
+        screenVideo.style.display = "none";
+
+        function handleEventData(data) {
+            if (data.type === "participant_list") {
+                list.innerHTML = "";
+                data.participants.forEach(participant => {
+                    const li = document.createElement("li");
+                    li.textContent = participant.username;
+                    list.appendChild(li);
+                });
+                document.getElementById("participants-count").innerText = `Participants: ${data.participants.length}`;
+            }
+
+            if (data.type === "chat_message") {
+                messagesDiv.innerHTML += `<p><strong>${data.username}:</strong> ${data.message}</p>`;
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            if (data.type === "stream_ended") {
+                screenVideo.style.display = "none";
+                messagesDiv.innerHTML = ""; 
+                list.innerHTML = "";
+                $.jGrowl(data.message, { life: 10000});
+                if (audioContext) audioContext.close(); // Stop audio context
+            }
+
+            if (data.mode === "switching_to_audio") {
+                switchToAudioMode();
+            } else if (data.mode === "switching_to_screen_sharing") {
+                switchToScreenSharingMode();
+            }
+            
+            if (data.type === "chat_history") {
+                if (Array.isArray(data.messages)) {
+                    data.messages.forEach((message) => {
+                        if (message.type === "chat_message") {
+                            // Process chat_message type here
+                            messagesDiv.innerHTML += `<p><strong>${message.username}:</strong> ${message.message}</p>`;
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        }
+                    });
+                }
+            }
+
+            // Handle cohost invite
+            if (data.type === "cohost_invite") {
+                showCohostInviteModal(data.message);
+            }
+
+            if (data.type === "cohost_left") {
+                $.jGrowl(data.message, { life: 10000});
+            }
+
+            if(data.type ==="cohost_joined"){
+                $.jGrowl(data.message, { life: 10000});
+            }
+            
+            if (data.type === "cohost_removed") {
+                // Reset button states
+                disableMicrophone();
+                leaveBtn.classList.add("d-none");
+                $.jGrowl(data.message, { life: 10000});
+            }
+            
+            if(data.type === "participant_left"){
+                updateParticipantList();
+                $.jGrowl(data.message, { life: 10000});
+            }
+
+            if(data.type === "error"){
+                $.jGrowl(data.details, { life: 10000});
+            }
+        }
+
+        // ** Switch to Audio Mode **
+        function switchToAudioMode() {
+            screenVideo.style.display = "none";
+            console.log("Switching to Audio Stream...");
+
+            if (mediaSource) {
+                mediaSource.endOfStream();
+                mediaSource = null;
+                sourceBuffer = null;
+                mediaQueue = [];
+            }
+        }
+
+        // ** Switch to Screen Sharing Mode **
+        function switchToScreenSharingMode() {
+            screenVideo.style.display = "block";
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+        }
+
+        function sendMessage() {
+            const message = document.getElementById("messageInput").value;
+            if (message && socket) {
+                socket.send(JSON.stringify({ type: "broadcast_message", message }));
+                document.getElementById("messageInput").value = "";
+            }
+        }
+
+        async function playRawAudio(audioBlob) {
+            try {
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const view = new DataView(arrayBuffer);
+
+                // 🔹 Set audio format (modify based on WebSocket server settings)
+                const sampleRate = 48000; // Try 16000, 32000, 44100, or check WebSocket server settings
+                const numChannels = 1; // Change to 2 for stereo
+                const bytesPerSample = 2; // 16-bit PCM
+
+                const numSamples = arrayBuffer.byteLength / bytesPerSample / numChannels;
+                const audioBuffer = audioContext.createBuffer(numChannels, numSamples, sampleRate);
+
+                // Convert PCM to Float32Array
+                for (let channel = 0; channel < numChannels; channel++) {
+                    const channelData = audioBuffer.getChannelData(channel);
+                    for (let i = 0; i < numSamples; i++) {
+                        const sampleIndex = i * numChannels + channel;
+                        const sample = view.getInt16(sampleIndex * bytesPerSample, true);
+                        channelData[i] = sample / 32768.0; // Normalize to [-1, 1]
+                    }
+                }
+
+                // Queue audio to avoid gaps
+                audioQueue.push(audioBuffer);
+                if (audioQueue.length === 1) {
+                    playNextBuffer();
+                }
+
+            } catch (error) {
+                console.error("Error processing raw audio:", error);
+            }
+        }
+       
+        // Play next buffer in the queue
+        function playNextBuffer() {
+            if (audioQueue.length === 0) return;
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioQueue.shift();
+            source.connect(audioContext.destination);
+
+            source.onended = playNextBuffer; // Play next buffer after current one finishes
+            source.start();
+        }
+
+        // Modified co-host invite modal with better audio control
+        function showCohostInviteModal(message) {
+            $.jGrowl(message, { life: 10000 });
+            document.getElementById("cohostInviteMessage").innerText = message;
+            const modal = new bootstrap.Modal(document.getElementById("cohostInviteModal"));
+            modal.show();
+
+            // Reset button states
+            leaveBtn.classList.add("d-none");
+
+            // Handle Accept
+            acceptBtn.onclick = function() {
+                const data = {
+                    "type": "accept_cohost",
+                    "event_id": room_id,
+                    "user_id": participant_user_id
+                };
+                enableMicrophone();
+                sendWebSocketMessage(data);
+                leaveBtn.classList.remove("d-none");
+                modal.hide();
+            };
+
+            // Handle Decline
+            declineBtn.onclick = function() {
+                sendWebSocketMessage({ type: "cohost_reject" });
+                modal.hide();
+            };
+
+            // Handle Leaving as Co-host
+            leaveBtn.onclick = function() {
+                disableMicrophone();
+                sendWebSocketMessage({
+                    type: "leave_cohost",
+                    "event_id": room_id,
+                    "user_id": participant_user_id
+                });
+                leaveBtn.classList.add("d-none");
+            };
+        }
+
+        // Enhanced microphone control functions
+        async function enableMicrophone() {
+            try {
+                disableMicrophone();
+                
+                // Get high-quality audio input
+                currentStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: false, // Better for manual control
+                        sampleRate: 16000,
+                        channelCount: 1
+                    }
+                });
+
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                mediaStreamSource = audioContext.createMediaStreamSource(currentStream);
+                audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                // Voice Activity Detection (VAD) variables
+                let silenceThreshold = 0.02;
+                let silenceDuration = 0;
+                let isSilent = false;
+                let consecutiveSilentFrames = 0;
+                const requiredSilentFrames = 5; // ~100ms at 4096 buffer size
+
+                audioProcessor.onaudioprocess = (event) => {
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    const int16Array = new Int16Array(inputData.length);
+                    
+                    // Detect if user is speaking
+                    let currentIsSilent = true;
+                    let maxSample = 0;
+                    for (let i = 0; i < inputData.length; i++) {
+                        const sample = Math.abs(inputData[i]);
+                        if (sample > silenceThreshold) {
+                            currentIsSilent = false;
+                        }
+                        if (sample > maxSample) {
+                            maxSample = sample;
+                        }
+                        int16Array[i] = inputData[i] * 32767;
+                    }
+
+                    // Voice activity state machine
+                    if (!currentIsSilent) {
+                        consecutiveSilentFrames = 0;
+                        if (!isSpeaking) {
+                            isSpeaking = true;
+                            sendSpeakingStatus(true);
+                        }
+                    } else {
+                        consecutiveSilentFrames++;
+                        if (consecutiveSilentFrames > requiredSilentFrames && isSpeaking) {
+                            isSpeaking = false;
+                            sendSpeakingStatus(false);
+                        }
+                    }
+
+                    // Only send audio when speaking
+                    if (isSpeaking && socket.readyState === WebSocket.OPEN) {
+                        socket.send(int16Array.buffer);
+                    }
+                };
+
+                mediaStreamSource.connect(audioProcessor);
+                audioProcessor.connect(audioContext.destination);
+                isCohost = true;
+                
+                // UI feedback
+                updateSpeakingUI();
+                console.log("Microphone enabled as co-host");
+            } catch (error) {
+                console.error("Error enabling microphone:", error);
+            }
+        }
+
+        // Disable Microphone (When user leaves as a cohost)
+        function disableMicrophone() {
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor = null;
+            }
+            if (mediaStreamSource) {
+                mediaStreamSource.disconnect();
+                mediaStreamSource = null;
+            }
+            if (audioContext) {
+                audioContext.close().catch(console.error);
+                audioContext = null;
+            }
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+            
+            if (isSpeaking) {
+                isSpeaking = false;
+                sendSpeakingStatus(false);
+            }
+            
+            isCohost = false;
+            updateSpeakingUI();
+            console.log("Microphone disabled");
+        }
+
+        function sendWebSocketMessage(message) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(message));
+            }
+        }
+
+        function toggleMicrophone(enable) {
+            if (enable) {
+                enableMicrophone();
+            } else {
+                disableMicrophone();
+            }
+        }
+
+        function sendSpeakingStatus(speaking) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    "type": "cohost_audio_status",
+                    "isSpeaking": speaking,
+                    "user_id": participant_user_id,
+                    "event_id":room_id
+                }));
+            }
+        }
+
+        function updateSpeakingUI() {
+            const micIndicator = document.getElementById('mic-status-indicator');
+            if (isCohost) {
+                micIndicator.textContent = isSpeaking ? "🎤 Speaking" : "🎤 Muted";
+                micIndicator.style.color = isSpeaking ? "#4CAF50" : "#FF5722";
+            } else {
+                micIndicator.textContent = "🎤 Off";
+                micIndicator.style.color = "#9E9E9E";
+            }
+        }
+
+    </script>
+    
+</body>
+</html>

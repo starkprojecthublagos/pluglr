@@ -1,16 +1,16 @@
 package com.example.streaming.controllers;
 
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.ResponseEntity;
 
 @RestController
-@RequestMapping("/home")
 public class HomeController {
 
-    @GetMapping("/")
+    @GetMapping("/index")
     public ResponseEntity<?> home() {
         return ResponseEntity.ok("Welcome Back.!");
     }
+
+
 }
