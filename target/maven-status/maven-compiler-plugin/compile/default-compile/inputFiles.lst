@@ -1,4 +1,3 @@
-C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\controllers\CustomErrorController.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\dtos\UserDataDTO.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\PasswordResetToken.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebClientConfig.java
@@ -6,7 +5,6 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\session
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\poto\RedisService.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Event.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebConfig.java
-C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\RabbitMQConfig.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\domain\AudioStreamHandlerConsumer.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\enums\UserStatus.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\RedisConfig.java

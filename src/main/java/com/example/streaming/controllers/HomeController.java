@@ -7,7 +7,7 @@ import org.springframework.http.ResponseEntity;
 @RestController
 public class HomeController {
 
-    @GetMapping("/index")
+    @GetMapping("/")
     public ResponseEntity<?> home() {
         return ResponseEntity.ok("Welcome Back.!");
     }

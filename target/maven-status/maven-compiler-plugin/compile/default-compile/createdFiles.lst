@@ -27,7 +27,6 @@ com\example\streaming\domain\AudioStreamHandlerConsumer$7.class
 com\example\streaming\config\FileStorageConfig.class
 com\example\streaming\domain\AudioStreamHandlerConsumer$14.class
 com\example\streaming\repository\EventRepository.class
-com\example\streaming\config\RabbitMQConfig.class
 com\example\streaming\config\WebSocketConfig.class
 com\example\streaming\domain\AudioStreamHandlerConsumer$10.class
 com\example\streaming\enums\UserStatus.class
@@ -41,7 +40,6 @@ com\example\streaming\responses\AuthResponse.class
 com\example\streaming\domain\AudioStreamHandlerConsumer$13.class
 com\example\streaming\domain\AudioStreamHandlerConsumer$1.class
 com\example\streaming\enums\StreamType.class
-com\example\streaming\controllers\CustomErrorController.class
 com\example\streaming\exceptions\UserNotFoundException.class
 com\example\streaming\responses\AuthResponse$AuthResponseBuilder.class
 com\example\streaming\domain\AudioStreamHandlerConsumer$16.class
