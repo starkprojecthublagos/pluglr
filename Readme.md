@@ -73,7 +73,7 @@
 
 
 
-## AUTHENTICATION API Endpoints STRUCTURE
+## AUTHENTICATION API ENDPOINT STRUCTURE
 
 #### Authentication & User Management
 | Endpoint | Method | Description | Expected Data |
