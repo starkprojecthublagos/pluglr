@@ -78,12 +78,12 @@
 #### Authentication & User Management
 | Endpoint | Method | Description | Expected Data |
 |----------|--------|-------------|--------------|
-| `/account/register/` | POST | Register a new user | `{'password':'password', 'email':'username@aol.com'}` |
-| `/account/login/` | POST | Login and obtain access & refresh tokens | `{'password':'password', 'email':'username@aol.com'}` |
-| `/account/verify-otp/` | POST | Verify OTP for account activation | `{'otp':'42232', 'email':'username@aol.com'}` |
-| `/account/resend-otp/` | POST | Resend OTP if expired | `{'email':'username@aol.com'}` |
-| `/account/token/refresh/` | POST | Refresh expired access token | `{'user_id':'UserID'}` |
-| `/account/create-new-password/` | POST | To Reset User Password | `{'password':'password', 'confirm_password':'password'}` |
-| `/account/send-welcome-email/` | POST | Send a welcome email upon successful registration | `null` |
-| `/account/complete-profile/` | POST | Complete user profile after registration | `{'firstname':'UserFName', 'lastname':'UserLname', 'mobile':'UserMobile', 'state':'UserState'}` |
-| `/account/user/id/<int:user_id>/` | GET | Fetch user details by ID | `UserIdParam` |
+| `https://api.pluglr.com/account/register/` | POST | Register a new user | `{'password':'password', 'email':'username@aol.com'}` |
+| `https://api.pluglr.com/account/login/` | POST | Login and obtain access & refresh tokens | `{'password':'password', 'email':'username@aol.com'}` |
+| `https://api.pluglr.com/account/verify-otp/` | POST | Verify OTP for account activation | `{'otp':'42232', 'email':'username@aol.com'}` |
+| `https://api.pluglr.com/account/resend-otp/` | POST | Resend OTP if expired | `{'email':'username@aol.com'}` |
+| `https://api.pluglr.com/account/token/refresh/` | POST | Refresh expired access token | `{'user_id':'UserID'}` |
+| `https://api.pluglr.com/account/create-new-password/` | POST | To Reset User Password | `{'password':'password', 'confirm_password':'password'}` |
+| `https://api.pluglr.com/account/send-welcome-email/` | POST | Send a welcome email upon successful registration | `null` |
+| `https://api.pluglr.com/account/complete-profile/` | POST | Complete user profile after registration | `{'firstname':'UserFName', 'lastname':'UserLname', 'mobile':'UserMobile', 'state':'UserState'}` |
+| `https://api.pluglr.com/account/user/id/<int:user_id>/` | GET | Fetch user details by ID | `UserIdParam` |
