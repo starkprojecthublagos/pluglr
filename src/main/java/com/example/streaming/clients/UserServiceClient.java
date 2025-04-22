@@ -23,6 +23,7 @@ public class UserServiceClient {
     }
 
     public UserDataDTO getUserById(Long id) {
+        System.out.println(id);
         UserDataDTO response = this.webClient.get()
                 .uri("/account/user/id/{userId}/", id)
                 .retrieve()

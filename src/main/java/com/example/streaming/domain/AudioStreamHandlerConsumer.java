@@ -211,7 +211,6 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         return null;
     }
 
-
     // Helper method to get all active participants in a room
     private List<WebSocketSession> getRoomParticipants(String roomId, String excludeSessionId) {
         List<WebSocketSession> participants = new ArrayList<>();
