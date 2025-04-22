@@ -2,6 +2,7 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\dtos\Us
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\PasswordResetToken.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebClientConfig.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\sessions\WebSocketSessionManager.java
+C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Participant.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\poto\RedisService.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Event.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebConfig.java
@@ -18,13 +19,13 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\excepti
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\exceptions\GlobalExceptionHandler.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\controllers\ParticipantController.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\enums\AttemptType.java
-C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Participants.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\clients\UserServiceClient.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\RecordedAudioStream.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\enums\StreamType.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\AuthorizeUserVerification.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\responses\StreamLinkMessage.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\exceptions\Error.java
+C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\repository\ChatMessageRepository.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\responses\AuthResponse.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\responses\UserResponseDTO.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\repository\EventRepository.java
@@ -35,3 +36,4 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\V
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\enums\Role.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\StreamingappApplication.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\controllers\HomeController.java
+C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\ChatMessage.java

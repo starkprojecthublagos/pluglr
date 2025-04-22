@@ -9,7 +9,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Service;
-import com.example.streaming.model.Participants;
+import com.example.streaming.model.Participant;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -88,12 +88,12 @@ public class RedisService {
     }
 
     // Get a participant's details from Redis
-    public Participants getParticipant(String eventId, String participantId) throws JsonProcessingException {
+    public Participant getParticipant(String eventId, String participantId) throws JsonProcessingException {
         String redisKey = "event:" + eventId + ":participants";
         String participantJson = (String) redisTemplate.opsForHash().get(redisKey, participantId);
         if (participantJson == null)
             return null;
-        return new ObjectMapper().readValue(participantJson, Participants.class);
+        return new ObjectMapper().readValue(participantJson, Participant.class);
     }
 
     // Remove all data related to an event from Redis

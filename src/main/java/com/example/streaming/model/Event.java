@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import com.example.streaming.enums.EventStatus;
@@ -28,9 +27,16 @@ public class Event {
 
     @Column(name = "host_id")
     private String hostId;
+    
+    @Column(name = "host_username", nullable = false)
+    private String hostUsername;
 
     @Column(name = "total_participants")
-    private Long totalParticipants;
+    private Integer totalParticipants = 0;
+
+    
+    @Column(name = "host_session_id", nullable = false)
+    private String hostSessionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
@@ -47,8 +53,9 @@ public class Event {
     @Column(name = "visibility")
     private VisibilityChoices visibility = VisibilityChoices.PUBLIC;
 
-    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    private List<Participants> participants = new ArrayList<>();
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<Participant> participants = new ArrayList<>();
+
    
     @CreationTimestamp
     private LocalDateTime createdOn;
