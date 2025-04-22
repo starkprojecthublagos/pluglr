@@ -20,7 +20,7 @@ public class RedisConfig {
     @Bean
     public RedisConnectionFactory redisConnectionFactory() {
         RedisStandaloneConfiguration configuration = new RedisStandaloneConfiguration();
-        configuration.setHostName("redis"); 
+        configuration.setHostName("localhost"); 
         configuration.setPort(6379); 
         return new LettuceConnectionFactory(configuration);
     }
