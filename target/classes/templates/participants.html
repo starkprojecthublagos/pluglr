@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Participants Live Streaming</title>
+    <title>User join Streaming</title>
     <link th:href="@{/css/bootstrap.min.css}" rel="stylesheet">
     <link th:href="@{/css/jquery.jgrowl.min.css}" rel="stylesheet">
     <script th:src="@{/js/bootstrap.bundle.min.js}"></script>
@@ -32,24 +32,6 @@
             border-radius: 5px;
             margin-bottom: 5px;
         }
-        #mic-status-indicator {
-            font-size: 1.2rem;
-            margin-right: 10px;
-            transition: color 0.3s ease;
-        }
-
-        #volume-meter {
-            width: 100px;
-            height: 5px;
-            background: #ddd;
-            margin-top: 5px;
-        }
-
-        #volume-level {
-            height: 100%;
-            background: #4CAF50;
-            transition: width 0.1s ease;
-        }
     </style>
 </head>
 
@@ -69,18 +51,7 @@
         <h3>Participants</h3>
         <p id="participants-count" class="fw-bold">Participants: 0</p>
         <ul id="participant-list" class="participant-list"></ul>
-        <!-- Add this to your participant HTML -->
-        <div id="audio-controls">
-            <span id="mic-status-indicator">🎤 Off</span>
-            <div id="cohost-controls" class="d-none">
-                <button id="leave-cohost-btn" class="btn btn-danger btn-sm">Leave as Co-host</button>
-            </div>
-        </div>
 
-        <!-- Volume meter (optional) -->
-        <div id="volume-meter" class="d-none">
-            <div id="volume-level" style="width: 0%"></div>
-        </div>
         <h3>Chat</h3>
         <div id="chat-container">
             <div id="messages"></div>
@@ -109,16 +80,11 @@
     </div>
 
     <script>
-        // Global variables for audio control
-        let isSpeaking = false;
-        let currentStream = null;
-        let mediaStreamSource = null;
-        let audioProcessor = null;
-        let isCohost = false;
         let socket;
         const mediaSource = new MediaSource();
         let sourceBuffer = null;
         let mediaRecorder;
+        let currentStream;
         let screenVideo = document.getElementById("screenShareVideo"); 
         let mediaQueue = []; 
         const messagesDiv = document.getElementById("messages");
@@ -132,7 +98,7 @@
         let participant_user_id = ''; 
         let username = '';
         let lastEventType = null;
-        let room_id = null;
+        
         // Set up MediaSource for screen sharing
         mediaSource.addEventListener('sourceopen', () => {
             sourceBuffer = mediaSource.addSourceBuffer('video/webm; codecs=vp9');
@@ -142,7 +108,8 @@
 
         function getUserIdFromWsUrl(wsUrl) {
             const urlParts = wsUrl.split("/");
-            var data = ([urlParts[10], urlParts[9], urlParts[8]]);
+            var data = ([urlParts[10], urlParts[9]]);
+            
             return data; 
         }
 
@@ -151,59 +118,34 @@
             const userDetails = getUserIdFromWsUrl(wsUrl);
             participant_user_id = userDetails[0];
             username = userDetails[1];
-            room_id = userDetails[2];
-          
+
             if (!wsUrl) {
                 $.jGrowl("Please enter a WebSocket URL", { life: 10000});
                 return;
             }
 
             socket = new WebSocket(wsUrl);
-            socket.binaryType = "blob";
+
             socket.onopen = () => {
                 showLeaveButton();
             };
 
-            // WebSocket message handler for user/co-host side
             socket.onmessage = async (event) => {
                 if (typeof event.data === "string") {
                     try {
                         const data = JSON.parse(event.data);
-                        if (data.type === "stream_link") {
-                            // Handle host audio stream
-                            const blob = event.data;
-                            if (blob instanceof Blob) {
-                                const arrayBuffer = await blob.arrayBuffer();
-                                const int16Samples = new Int16Array(arrayBuffer);
-                                const wavBlob = encodeWAV(int16Samples, 16000); 
-                                const wavArrayBuffer = await wavBlob.arrayBuffer();
-                                playDDAudio(wavArrayBuffer);
-                            }
-                        }
-            
-                        // Handle host speaking status (to mute co-host when host is speaking)
-                        else if (data.type === "host_audio_status") {
-                            if (isCohost) {
-                                toggleMicrophone(!data.isSpeaking);
-                            }
-                        }
-                        
                         handleEventData(data);
                     } catch (error) {
-                        console.error("Error parsing WebSocket message:", error);
+                        $.jGrowl("Error parsing WebSocket message:", error, { life: 10000});
                     }
                 } 
-                // Handle binary audio data (from host or other co-hosts)
-                else if (event.data instanceof ArrayBuffer) {
-                    if (!isSpeaking) {  // Only play audio if we're not currently speaking
-                        const int16Samples = new Int16Array(event.data);
-                        const wavBlob = encodeWAV(int16Samples, 16000);
-                        const wavArrayBuffer = await wavBlob.arrayBuffer();
-                        playDDAudio(wavArrayBuffer);
-                    }
+                
+                else if (event.data instanceof Blob) {
+                    playRawAudio(event.data);
+                } else if (event.data instanceof ArrayBuffer) {
+                    playRawAudio(new Blob([event.data]));
                 }
             };
-
 
             socket.onclose = () => {
                 hideLeaveButton(); 
@@ -213,51 +155,6 @@
                 $.jGrowl("WebSocket error. Please try again", { life: 10000});
             };
         });
-
-        function playDDAudio(arrayBuffer) {
-            audioContext.decodeAudioData(arrayBuffer.slice(0), (audioBuffer) => {
-                const source = audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(audioContext.destination);
-                source.start(0);
-            }, (error) => {
-                console.error("❌ Failed to decode audio", error);
-            });
-        }
-
-        // WAV encoder
-        function encodeWAV(samples, sampleRate = 16000) {
-            const buffer = new ArrayBuffer(44 + samples.length * 2);
-            const view = new DataView(buffer);
-
-            function writeString(view, offset, str) {
-                for (let i = 0; i < str.length; i++) {
-                    view.setUint8(offset + i, str.charCodeAt(i));
-                }
-            }
-
-            writeString(view, 0, 'RIFF');
-            view.setUint32(4, 36 + samples.length * 2, true);
-            writeString(view, 8, 'WAVE');
-            writeString(view, 12, 'fmt ');
-            view.setUint32(16, 16, true); // PCM format chunk size
-            view.setUint16(20, 1, true);  // PCM format
-            view.setUint16(22, 1, true);  // mono
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * 2, true); // byteRate
-            view.setUint16(32, 2, true); // blockAlign
-            view.setUint16(34, 16, true); // bits per sample
-            writeString(view, 36, 'data');
-            view.setUint32(40, samples.length * 2, true);
-
-            for (let i = 0; i < samples.length; i++) {
-                view.setInt16(44 + i * 2, samples[i], true); // little-endian
-            }
-
-            return new Blob([view], { type: 'audio/wav' });
-        }
-
-
 
         // Function to show the "Leave Live" button
         function showLeaveButton() {
@@ -272,12 +169,12 @@
 
         // Function to handle leaving the live stream
         function leaveLiveStream() {
-            const data  = {
-                "type": "leave_room",
-                "event_id": room_id,
-                "user_id": participant_user_id
-            };
-            sendWebSocketMessage(data);
+            sendWebSocketMessage({
+                type: "leave_room",
+                participant_id: participant_user_id,
+                "username":username,
+            });
+
             if (socket) {
                 socket.close();
             }
@@ -299,7 +196,7 @@
                 document.getElementById("participants-count").innerText = `Participants: ${data.participants.length}`;
             }
 
-            if (data.type === "chat_message") {
+            if (data.type === "message_broadcast") {
                 messagesDiv.innerHTML += `<p><strong>${data.username}:</strong> ${data.message}</p>`;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
@@ -385,7 +282,7 @@
         function sendMessage() {
             const message = document.getElementById("messageInput").value;
             if (message && socket) {
-                socket.send(JSON.stringify({ type: "broadcast_message", message, "participant_id":participant_user_id, "event_id":room_id}));
+                socket.send(JSON.stringify({ type: "broadcast_message", message }));
                 document.getElementById("messageInput").value = "";
             }
         }
@@ -436,187 +333,83 @@
             source.start();
         }
 
-        // Modified co-host invite modal with better audio control
         function showCohostInviteModal(message) {
-            $.jGrowl(message, { life: 10000 });
+            $.jGrowl(message, { life: 10000});
             document.getElementById("cohostInviteMessage").innerText = message;
             const modal = new bootstrap.Modal(document.getElementById("cohostInviteModal"));
             modal.show();
 
-            // Reset button states
+             // Reset button states
             leaveBtn.classList.add("d-none");
 
-            // Handle Accept
-            acceptBtn.onclick = function() {
-                const data = {
-                    "type": "accept_cohost",
-                    "event_id": room_id,
-                    "user_id": participant_user_id
-                };
+           // Handle Accept
+            acceptBtn.onclick = function () {
                 enableMicrophone();
-                sendWebSocketMessage(data);
+                sendWebSocketMessage({
+                    type: "accept_cohost"
+                });
+
+                // Show "Leave as Co-host" button
                 leaveBtn.classList.remove("d-none");
+
                 modal.hide();
             };
 
             // Handle Decline
-            declineBtn.onclick = function() {
-                sendWebSocketMessage({ type: "cohost_reject" });
+            declineBtn.onclick = function () {
+                sendWebSocketMessage({
+                    type: "cohost_reject"
+                });
                 modal.hide();
             };
 
             // Handle Leaving as Co-host
-            leaveBtn.onclick = function() {
+            leaveBtn.onclick = function () {
                 disableMicrophone();
                 sendWebSocketMessage({
-                    type: "leave_cohost",
-                    "event_id": room_id,
-                    "user_id": participant_user_id
+                    type: "cohost_leave",
+                    participant_id: participant_user_id
                 });
+               
+                // Hide the leave button
                 leaveBtn.classList.add("d-none");
             };
         }
 
-        // Enhanced microphone control functions
+        // Enable Microphone
         async function enableMicrophone() {
-            try {
-                disableMicrophone();
-                
-                // Get high-quality audio input
-                currentStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: false, // Better for manual control
-                        sampleRate: 16000,
-                        channelCount: 1
-                    }
-                });
+            disableMicrophone();
+            currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioContext = new AudioContext();
+            const mediaStreamSource = audioContext.createMediaStreamSource(currentStream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-                audioContext = new AudioContext({ sampleRate: 16000 });
-                mediaStreamSource = audioContext.createMediaStreamSource(currentStream);
-                audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = (event) => {
+                const inputData = event.inputBuffer.getChannelData(0);
+                const int16Array = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    int16Array[i] = inputData[i] * 32767; // Convert float [-1,1] to Int16
+                }
+                socket.send(int16Array.buffer); // Send raw PCM data
+            };
 
-                // Voice Activity Detection (VAD) variables
-                let silenceThreshold = 0.02;
-                let silenceDuration = 0;
-                let isSilent = false;
-                let consecutiveSilentFrames = 0;
-                const requiredSilentFrames = 5; // ~100ms at 4096 buffer size
-
-                audioProcessor.onaudioprocess = (event) => {
-                    const inputData = event.inputBuffer.getChannelData(0);
-                    const int16Array = new Int16Array(inputData.length);
-                    
-                    // Detect if user is speaking
-                    let currentIsSilent = true;
-                    let maxSample = 0;
-                    for (let i = 0; i < inputData.length; i++) {
-                        const sample = Math.abs(inputData[i]);
-                        if (sample > silenceThreshold) {
-                            currentIsSilent = false;
-                        }
-                        if (sample > maxSample) {
-                            maxSample = sample;
-                        }
-                        int16Array[i] = inputData[i] * 32767;
-                    }
-
-                    // Voice activity state machine
-                    if (!currentIsSilent) {
-                        consecutiveSilentFrames = 0;
-                        if (!isSpeaking) {
-                            isSpeaking = true;
-                            sendSpeakingStatus(true);
-                        }
-                    } else {
-                        consecutiveSilentFrames++;
-                        if (consecutiveSilentFrames > requiredSilentFrames && isSpeaking) {
-                            isSpeaking = false;
-                            sendSpeakingStatus(false);
-                        }
-                    }
-
-                    // Only send audio when speaking
-                    if (isSpeaking && socket.readyState === WebSocket.OPEN) {
-                        socket.send(int16Array.buffer);
-                    }
-                };
-
-                mediaStreamSource.connect(audioProcessor);
-                audioProcessor.connect(audioContext.destination);
-                isCohost = true;
-                
-                // UI feedback
-                updateSpeakingUI();
-                console.log("Microphone enabled as co-host");
-            } catch (error) {
-                console.error("Error enabling microphone:", error);
-            }
+            mediaStreamSource.connect(processor);
+            processor.connect(audioContext.destination);
         }
 
-        // Disable Microphone (When user leaves as a cohost)
+       // Disable Microphone (When user leaves as a cohost)
         function disableMicrophone() {
-            if (audioProcessor) {
-                audioProcessor.disconnect();
-                audioProcessor = null;
-            }
-            if (mediaStreamSource) {
-                mediaStreamSource.disconnect();
-                mediaStreamSource = null;
-            }
-            if (audioContext) {
-                audioContext.close().catch(console.error);
-                audioContext = null;
+            if (mediaRecorder) {
+                mediaRecorder.stop();
             }
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
-                currentStream = null;
             }
-            
-            if (isSpeaking) {
-                isSpeaking = false;
-                sendSpeakingStatus(false);
-            }
-            
-            isCohost = false;
-            updateSpeakingUI();
-            console.log("Microphone disabled");
         }
 
         function sendWebSocketMessage(message) {
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify(message));
-            }
-        }
-
-        function toggleMicrophone(enable) {
-            if (enable) {
-                enableMicrophone();
-            } else {
-                disableMicrophone();
-            }
-        }
-
-        function sendSpeakingStatus(speaking) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    "type": "cohost_audio_status",
-                    "isSpeaking": speaking,
-                    "user_id": participant_user_id,
-                    "event_id":room_id
-                }));
-            }
-        }
-
-        function updateSpeakingUI() {
-            const micIndicator = document.getElementById('mic-status-indicator');
-            if (isCohost) {
-                micIndicator.textContent = isSpeaking ? "🎤 Speaking" : "🎤 Muted";
-                micIndicator.style.color = isSpeaking ? "#4CAF50" : "#FF5722";
-            } else {
-                micIndicator.textContent = "🎤 Off";
-                micIndicator.style.color = "#9E9E9E";
             }
         }
 
