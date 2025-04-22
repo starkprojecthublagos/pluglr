@@ -21,12 +21,6 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
   
   thymeleaf:
     prefix: classpath:/templates/
@@ -47,7 +41,7 @@ auth-service:
   base-url: https://api.pluglr.com
 
 redis:
-  host: localhost
+  host: redis_springboot
   port: 6379
 
 main:
