@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.example.streaming.StreamingappApplicationTests
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 80.26 s -- in com.example.streaming.StreamingappApplicationTests
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 22.18 s -- in com.example.streaming.StreamingappApplicationTests
