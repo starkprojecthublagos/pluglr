@@ -7,9 +7,9 @@ services:
     ports:
       - "8011:8011"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_db:5432/pluglr_auth
-      - SPRING_DATASOURCE_USERNAME=pluglr_admin
-      - SPRING_DATASOURCE_PASSWORD=Rubies@2030!
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_db:5432/pesco_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=powergrid@2?.net
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
     depends_on:
@@ -25,9 +25,9 @@ services:
     container_name: postgres_db
     restart: always
     environment:
-      POSTGRES_DB: pluglr_auth
-      POSTGRES_USER: pluglr_admin
-      POSTGRES_PASSWORD: Rubies@2030!
+      POSTGRES_DB: pesco_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: powergrid@2?.net
     ports:
       - "5433:5432"
     volumes:
