@@ -41,7 +41,7 @@ auth-service:
   base-url: https://api.pluglr.com
 
 redis:
-  host: redis_springboot
+  host: redis
   port: 6379
 
 main:
