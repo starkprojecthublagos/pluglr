@@ -44,7 +44,7 @@ web:
       static-locations: classpath:/static/
 
 auth-service:
-  base-url: http://localhost:8000
+  base-url: https://api.pluglr.com
 
 redis:
   host: localhost
