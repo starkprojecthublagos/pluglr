@@ -385,7 +385,7 @@
         function sendMessage() {
             const message = document.getElementById("messageInput").value;
             if (message && socket) {
-                socket.send(JSON.stringify({ type: "broadcast_message", message }));
+                socket.send(JSON.stringify({ type: "broadcast_message", message, "participant_id":participant_user_id, "event_id":room_id}));
                 document.getElementById("messageInput").value = "";
             }
         }

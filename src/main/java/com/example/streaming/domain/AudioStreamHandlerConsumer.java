@@ -587,6 +587,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     }
 
     
+    @SuppressWarnings("unused")
     private void broadcastParticipantList(String eventId) {
         try {
             // 1. Get room data from Redis
