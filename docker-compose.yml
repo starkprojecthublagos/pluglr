@@ -7,20 +7,20 @@ services:
     ports:
       - "8011:8011"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/pluglr_auth
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql_db:3306/pluglr_auth
       - SPRING_DATASOURCE_USERNAME=pluglr_admin
       - SPRING_DATASOURCE_PASSWORD=Rubies@2030!
       - SPRING_REDIS_HOST=redis
       - SPRING_REDIS_PORT=6379
     depends_on:
-      db:
+      mysql_db:
         condition: service_healthy
       redis:
         condition: service_started
     networks:
       - pluglr-springboot-network  
 
-  db:
+  mysql_db:
     image: mysql:latest
     container_name: mysql_db
     restart: always
