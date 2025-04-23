@@ -20,6 +20,8 @@ com\example\streaming\controllers\HomeController.class
 com\example\streaming\enums\AttemptType.class
 com\example\streaming\model\RecordedAudioStream.class
 com\example\streaming\repository\ParticipantRepository.class
+com\example\streaming\poto\libs\RNNoiseProcessor$RNNoise.class
+com\example\streaming\poto\libs\RNNoiseProcessor.class
 com\example\streaming\config\FileStorageConfig.class
 com\example\streaming\repository\EventRepository.class
 com\example\streaming\config\WebSocketConfig.class
@@ -41,7 +43,5 @@ com\example\streaming\config\WebClientConfig.class
 com\example\streaming\model\VerificationToken.class
 com\example\streaming\enums\VisibilityChoices.class
 com\example\streaming\config\AsyncConfig.class
-com\example\streaming\poto\RedisService.class
-com\example\streaming\poto\RedisService$1.class
 com\example\streaming\dtos\UserDataDTO.class
 com\example\streaming\clients\UserServiceClient.class

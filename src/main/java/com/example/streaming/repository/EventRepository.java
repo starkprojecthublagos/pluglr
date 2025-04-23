@@ -34,5 +34,6 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT e FROM Event e JOIN FETCH e.participants WHERE e.id = :id")
     Event findAllParticipantsById(@Param("id") Long id);
 
-    
+    @Query("SELECT e.hostSessionId FROM Event e WHERE e.roomId = :roomId")
+    Optional<String> findHostSessionIdByRoomId(@Param("roomId") String roomId);
 }

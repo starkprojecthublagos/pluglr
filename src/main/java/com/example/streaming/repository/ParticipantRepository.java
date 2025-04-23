@@ -42,12 +42,14 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
     @Query("SELECT p FROM Participant p WHERE p.event.roomId = :eventId AND p.userId = :participantId")  
     List<Participant> findByRoomIdAndParticipantId(@Param("eventId") String eventId, @Param("participantId") String participantId);  
 
-    @Query("SELECT p FROM Participant p WHERE p.event.roomId = :eventId AND p.userId = :participantId")  
-    Optional<Participant> findByEventIdAndUserId(@Param("eventId") String eventId, @Param("participantId") String participantId);  
-    
-    @Query("SELECT p.sessionId FROM Participant p WHERE p.participantId = :participantId")
+    @Query("SELECT p FROM Participant p JOIN FETCH p.event WHERE p.event.roomId = :eventId AND p.userId = :participantId")
+    Optional<Participant> findByEventIdAndUserId(@Param("eventId") String eventId,
+            @Param("participantId") String participantId);
+
+    @Query("SELECT p.sessionId FROM Participant p WHERE p.userId = :participantId")
     String findSessionIdForParticipant(@Param("participantId") String participantId);
 
-    
+    @Query("SELECT p.sessionId FROM Participant p WHERE p.event.roomId = :roomId")
+    List<Participant> findByRoomIdList(@Param("roomId") String roomId);
 
 }

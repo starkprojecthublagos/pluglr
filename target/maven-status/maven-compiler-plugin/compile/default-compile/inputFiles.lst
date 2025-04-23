@@ -3,7 +3,7 @@ C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\P
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebClientConfig.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\sessions\WebSocketSessionManager.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Participant.java
-C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\poto\RedisService.java
+C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\poto\libs\RNNoiseProcessor.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\model\Event.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\config\WebConfig.java
 C:\Users\Envy\Desktop\java\streaming\src\main\java\com\example\streaming\domain\AudioStreamHandlerConsumer.java

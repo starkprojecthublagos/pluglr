@@ -27,6 +27,7 @@ import com.example.streaming.enums.StreamType;
 import com.example.streaming.model.ChatMessage;
 import com.example.streaming.model.Event;
 import com.example.streaming.model.Participant;
+import com.example.streaming.poto.libs.RNNoiseProcessor;
 import com.example.streaming.repository.ChatMessageRepository;
 import com.example.streaming.repository.EventRepository;
 import com.example.streaming.repository.ParticipantRepository;
@@ -40,7 +41,9 @@ import org.springframework.web.socket.*;
 
 @Component
 public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
-
+    private static final int MAX_FRAME_SIZE = 480 * 2 * 2; // 20ms of 48kHz stereo audio
+    private static final short SILENCE_THRESHOLD = 500;
+    
     private final ConcurrentMap<String, String> sessionToRoomMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, WebSocketSession> activeSessions = new ConcurrentHashMap<>();
     // Active connections tracking
@@ -110,20 +113,18 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession senderSession, BinaryMessage message) throws Exception {
         String senderSessionId = senderSession.getId();
-        byte[] audioData = message.getPayload().array();
-
-        int MAX_FRAME_SIZE = 4096 * 2; 
-        if (audioData.length > MAX_FRAME_SIZE) {
-            System.out.println("❌ Frame too large. Skipping...");
+        String roomId = getRoomIdBySessionId(senderSessionId);
+        if (roomId == null)
             return;
-        }
 
-        // Silence detection 
+        // 2. Process audio frame
+        byte[] audioData = message.getPayload().array();
+        // Silence detection - only if you want server-side filtering
         boolean isSilent = true;
         for (int i = 0; i < audioData.length; i += 2) {
             short sample = (short) ((audioData[i + 1] << 8) | (audioData[i] & 0xFF));
             // Adjust threshold as needed
-            if (Math.abs(sample) > 500) { 
+            if (Math.abs(sample) > SILENCE_THRESHOLD) {
                 isSilent = false;
                 break;
             }
@@ -132,24 +133,15 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             System.out.println("🔇 Silent audio skipped.");
             return;
         }
-       
-        // Find which room the sender belongs to
-        String roomId = getRoomIdBySessionId(senderSessionId);
-        if (roomId == null) {
-            System.out.println("❌ No room found for session: " + senderSessionId);
-            return;
-        }
 
-        // Get all active participants in the room
-        List<WebSocketSession> recipients = getRoomParticipants(roomId, senderSessionId);
-        // if (recipients.isEmpty()) {
-        //     System.out.println("⚠️ No active participants in room: " + roomId);
-        //     return;
-        // }
+        byte[] cleanedAudio = RNNoiseProcessor.processAudioFrame(audioData);
+        BinaryMessage audioMessage = new BinaryMessage(cleanedAudio);
 
-        //  Broadcast audio to all participants 
-        BinaryMessage audioMessage = new BinaryMessage(audioData);
-        for (WebSocketSession recipient : recipients) {
+        // Get ALL active sessions in the room (host + cohosts + participants)
+        List<WebSocketSession> allSessions = getRoomParticipants(roomId, senderSessionId);
+
+        // Broadcast to everyone except sender
+        for (WebSocketSession recipient : allSessions) {
             try {
                 if (recipient.isOpen()) {
                     recipient.sendMessage(audioMessage);
@@ -159,25 +151,14 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                 cleanupDisconnectedSession(recipient.getId());
             }
         }
-
     }
 
-
-    private String getRoomIdBySessionId(String sessionId) {
-        // 1. Check if session is the main host session
-        Optional<Event> mainHostEvent = eventRepository.findByHostSessionId(sessionId);
-        if (mainHostEvent.isPresent()) {
-            return mainHostEvent.get().getRoomId().toString();
-        }
-        return null;
-    }
-
-    // Helper method to get all active participants in a room
+        // Helper method to get all active participants in a room
     private List<WebSocketSession> getRoomParticipants(String roomId, String excludeSessionId) {
         List<WebSocketSession> participants = new ArrayList<>();
         // Get all participant session IDs for this room
         List<String> sessionIds = participantRepository.findSessionIdsByRoomId(roomId);
-        
+
         for (String sessionId : sessionIds) {
             if (!sessionId.equals(excludeSessionId)) {
                 WebSocketSession session = sessionManager.getSession(sessionId);
@@ -189,7 +170,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
         // Optionally add host if stored separately
         eventRepository.findByRoomId(roomId).ifPresent(event -> {
-            String hostSessionId = event.getHostSessionId(); 
+            String hostSessionId = event.getHostSessionId();
             if (hostSessionId != null && !hostSessionId.equals(excludeSessionId)) {
                 WebSocketSession hostSession = sessionManager.getSession(hostSessionId);
                 if (hostSession != null && hostSession.isOpen()) {
@@ -199,6 +180,16 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         });
 
         return participants;
+    }
+
+
+    private String getRoomIdBySessionId(String sessionId) {
+        // 1. Check if session is the main host session
+        Optional<Event> mainHostEvent = eventRepository.findByHostSessionId(sessionId);
+        if (mainHostEvent.isPresent()) {
+            return mainHostEvent.get().getRoomId().toString();
+        }
+        return null;
     }
 
     
@@ -385,7 +376,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         Participant participant = null;
 
         for (Participant p : participants) {
-            if (p.getParticipantId().equals(participantId)) {
+            if (p.getUserId().equals(participantId)) {
                 participant = p;
                 break;
             }
@@ -402,7 +393,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             // Create and add new participant
             participant = new Participant();
             participant.setEvent(eventOpt);
-            participant.setParticipantId(participantId);
+            participant.setUserId(participantId);
             participant.setUsername(displayName);
             participant.setSessionId(session.getId());
             participant.setReconnect(false);
@@ -456,7 +447,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
             // Convert participants List to Map
             Map<String, Participant> participants = room.getParticipants().stream()
-                    .collect(Collectors.toMap(Participant::getParticipantId, Function.identity()));
+                    .collect(Collectors.toMap(Participant::getUserId, Function.identity()));
 
             if (participants == null || participants.isEmpty()) {
                 System.out.println("⚠️ No participants found in room: " + roomId);
@@ -510,7 +501,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             List<Map<String, Object>> participantList = participants.stream()
                     .map(participant -> {
                         Map<String, Object> simplified = new HashMap<>();
-                        simplified.put("id", participant.getParticipantId());
+                        simplified.put("id", participant.getUserId());
                         simplified.put("username", participant.getUsername());
                         simplified.put("is_cohost", participant.isCohost());
                         return simplified;
@@ -813,7 +804,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
             // 3. Find the target participant
             Participant targetParticipant = participants.stream()
-                    .filter(p -> participantId.equals(p.getParticipantId()))
+                    .filter(p -> participantId.equals(p.getUserId()))
                     .findFirst()
                     .orElse(null);
 
@@ -865,7 +856,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             // 2. Find and update the participant's co-host status
             Participant cohost = null;
             for (Participant participant : participants) {
-                if (participantId.equals(participant.getParticipantId())) {
+                if (participantId.equals(participant.getUserId())) {
                     participant.setCohost(true);
                     participantRepository.save(participant);
                     cohost = participant;
@@ -948,7 +939,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             Iterator<Participant> iterator = participants.iterator();
             while (iterator.hasNext()) {
                 Participant p = iterator.next();
-                if (participantId.equals(p.getParticipantId())) {
+                if (participantId.equals(p.getUserId())) {
                     username = p.getUsername();
                     leavingParticipant = p;
                     iterator.remove();
@@ -975,7 +966,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             leavePayload.put("message", username + " left the room");
             leavePayload.put("participantId", participantId);
             leavePayload.put("timestamp", Instant.now().toString());
-
+            broadcastParticipantList(roomId);
             String leaveMessage = objectMapper.writeValueAsString(leavePayload);
             TextMessage leaveTextMessage = new TextMessage(leaveMessage);
 
@@ -989,7 +980,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                             wsSession.sendMessage(leaveTextMessage);
                         } catch (IOException e) {
                             sessionManager.removeSession(sessionId);
-                            System.out.println("Cleaned up disconnected session for: " + p.getParticipantId());
+                            System.out.println("Cleaned up disconnected session for: " + p.getUserId());
                         }
                     }
                 }
@@ -1010,7 +1001,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             }
 
             // 8. Refresh participants UI
-            broadcastParticipantList(roomId);
+            
             broadcastParticipantCount(roomId);
 
         } catch (Exception e) {
@@ -1038,7 +1029,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             // 2. Find and remove the participant
             Participant participantToRemove = null;
             for (Participant p : participantsList) {
-                if (participantId.equals(p.getParticipantId())) {
+                if (participantId.equals(p.getUserId())) {
                     participantToRemove = p;
                     break;
                 }
@@ -1072,7 +1063,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
             // 7. Broadcast to all remaining participants
             for (Participant p : participantsList) {
-                String pid = p.getParticipantId();
+                String pid = p.getUserId();
                 String pSessionId = participantRepository.findSessionIdForParticipant(pid);
 
                 if (pSessionId != null) {
@@ -1130,14 +1121,14 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
             // Convert List<Participant> to Map<String, Participant>
             Map<String, Participant> participantsMap = participantsList.stream()
-                    .collect(Collectors.toMap(Participant::getParticipantId, participant -> participant));
+                    .collect(Collectors.toMap(Participant::getUserId, participant -> participant));
 
             // 3. Find and update the participant's co-host status to false
             boolean participantFound = false;
             String username = null;
             for (Map.Entry<String, Participant> entry : participantsMap.entrySet()) {
                 Participant participant = entry.getValue();
-                if (participantId.equals(participant.getParticipantId())) {
+                if (participantId.equals(participant.getUserId())) {
                     participant.setCohost(false);
                     username = participant.getUsername();
                     participantFound = true;
@@ -1177,7 +1168,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                         } catch (IOException e) {
                             sessionManager.removeSession(sessionId);
                             System.out.println(
-                                    "Cleaned up disconnected participant session: " + participant.getParticipantId());
+                                    "Cleaned up disconnected participant session: " + participant.getUserId());
                         }
                     }
                 }
@@ -1225,7 +1216,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             String username = null;
 
             for (Participant participant : participants) {
-                if (participant.getParticipantId().equals(participantId)) {
+                if (participant.getUserId().equals(participantId)) {
                     participant.setCohost(false); 
                     username = participant.getUsername();
                     participantFound = true;
@@ -1264,7 +1255,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                             wsSession.sendMessage(textMessage);
                         } catch (IOException e) {
                             sessionManager.removeSession(sessionId);
-                            System.out.println("Cleaned up disconnected session for: " + participant.getParticipantId());
+                            System.out.println("Cleaned up disconnected session for: " + participant.getUserId());
                         }
                     }
                 }
@@ -1298,38 +1289,63 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     private void handleChatMessage(String eventId, String message, String participantId) {
         try {
             long userIdLong = Long.parseLong(participantId);
-            UserDataDTO userdetails = userServiceClient.getUserById(userIdLong);
+            String username = null;
+       
+            Optional<Participant> participant = participantRepository.findByEventIdAndUserId(eventId, participantId);
+    
+            if (participant.isPresent()) {
+                username = participant.get().getUsername();
 
-            // 1. Save to DB
+            }
+            else if (!participant.isPresent()) {
+                Optional<Event> eventHostUsername = eventRepository.findByRoomId(eventId);
+                username = eventHostUsername.get().getHostUsername();
+            }
+            if(!participant.isPresent() && !participant.isPresent()){
+                username ="User";
+            }
+        
+            // 1. Save chat to DB
             ChatMessage chatMessage = new ChatMessage();
             chatMessage.setRoomId(eventId);
             chatMessage.setUserId(userIdLong);
-            chatMessage.setUsername(userdetails.getData().getUsername());
+            chatMessage.setUsername(username);
             chatMessage.setMessage(message);
             chatMessageRepository.save(chatMessage);
 
-            // 2. Prepare payload
+            // 2. Build payload
             Map<String, Object> chatPayload = new HashMap<>();
             chatPayload.put("type", "chat_message");
             chatPayload.put("message", message);
-            chatPayload.put("username", userdetails.getData().getUsername());
+            chatPayload.put("username", username);
             chatPayload.put("user_id", participantId);
             chatPayload.put("timestamp", Instant.now().toString());
 
             TextMessage textMessage = new TextMessage(new ObjectMapper().writeValueAsString(chatPayload));
 
-            // 3. Send to all participants and host using sessionManager
-            for (WebSocketSession session : sessionManager.getAllSessionsByEvent(eventId)) {
+            // 3. Fetch all sessionIds (host + participants)
+            Set<String> sessionIds = new HashSet<>();
+
+            eventRepository.findByRoomId(eventId)
+                    .map(Event::getHostSessionId)
+                    .ifPresent(sessionIds::add);
+
+            sessionIds.addAll(participantRepository.findSessionIdsByRoomId(eventId));
+
+            // 4. Send message to each live WebSocket session
+            for (String sessionId : sessionIds) {
+                WebSocketSession session = sessionManager.getSession(sessionId); 
                 if (session != null && session.isOpen()) {
                     try {
                         session.sendMessage(textMessage);
                     } catch (IOException e) {
-                        sessionManager.removeSession(session.getId());
+                        sessionManager.removeSession(sessionId);
+                        System.err.println("Failed to send message to session: " + sessionId);
                     }
                 }
             }
         } catch (Exception e) {
-            System.out.println("Error handling chat message: " + e.getMessage());
+            System.err.println("Error handling chat message: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -1379,7 +1395,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                 return;
 
             Participant cohost = participants.stream()
-                    .filter(p -> participantId.equals(p.getParticipantId()))
+                    .filter(p -> participantId.equals(p.getUserId()))
                     .findFirst()
                     .orElse(null);
 

@@ -75,6 +75,7 @@
 
     <script>
         // Global variables for audio control
+        let floatBuffer = [];
         let isHostSpeaking = false;
         let isCohostSpeaking = false;
         let currentStream = null;
@@ -93,7 +94,7 @@
         let coHostUsername = null;
         let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0NTQ4NDMxMywiaWF0IjoxNzQ1Mzk3OTEzfQ.-z1_lEPR7iJ9XcOMe8pM9Hr7z1BZKX31wsr4UVwdncU"
         document.getElementById("start").addEventListener("click", async () => {
-            socket = new WebSocket(`wss://apps.pluglr.com/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
+            socket = new WebSocket(`ws://localhost:8011/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
             socket.onopen = () => console.log("WebSocket connected!");
 
             socket.onmessage = async (event) => {
@@ -154,33 +155,32 @@
                 processor.connect(audioContext.destination);
 
                 processor.onaudioprocess = (event) => {
-                    // Only process audio if host is allowed to speak
                     if (!isCohostSpeaking) {
                         const inputData = event.inputBuffer.getChannelData(0);
-                        const int16Array = new Int16Array(inputData.length);
+                        
+                        // Push incoming samples into our float buffer
+                        floatBuffer.push(...inputData);
 
-                        let isSilent = true;
-                        for (let i = 0; i < inputData.length; i++) {
-                            if (Math.abs(inputData[i]) > 0.01) {
-                                isSilent = false;
-                                break;
-                            }
-                        }
+                        while (floatBuffer.length >= 960) {
+                            const frame = floatBuffer.slice(0, 960); // Get 960 samples
+                            floatBuffer = floatBuffer.slice(960);   // Remove processed part
 
-                        if (!isSilent) {
-                            isHostSpeaking = true;
-                            for (let i = 0; i < inputData.length; i++) {
-                                let sample = Math.max(-1, Math.min(1, inputData[i]));
+                            let int16Array = new Int16Array(960);
+                            let isSilent = true;
+
+                            for (let i = 0; i < 960; i++) {
+                                let sample = Math.max(-1, Math.min(1, frame[i]));
+                                if (Math.abs(sample) > 0.01) isSilent = false;
                                 int16Array[i] = sample * 32767;
                             }
-                            if (socket && socket.readyState === WebSocket.OPEN) {
+
+                            if (!isSilent && socket && socket.readyState === WebSocket.OPEN) {
                                 socket.send(int16Array.buffer);
                             }
-                        } else {
-                            isHostSpeaking = false;
                         }
                     }
                 };
+
                 
                 // Store processor for later cleanup
                 audioProcessor = processor;
@@ -422,7 +422,7 @@
                 const li = document.createElement("li");
                 li.textContent = participant.username;
             
-                 if (id === coHostUserId) { // If user is the co-host
+                if (id === coHostUserId) {
                     const removeCohostButton = document.createElement("button");
                     removeCohostButton.textContent = "Remove Co-host";
                     removeCohostButton.style.marginLeft = "10px";
@@ -453,7 +453,7 @@
         function sendMessage(userId) {
             const message = document.getElementById("messageInput").value;
             if (message && socket) {
-                socket.send(JSON.stringify({ type: "broadcast_message", message, "participant_id":userId, "event_id":liveId}));
+                socket.send(JSON.stringify({ type: "broadcast_message", message, "user_id":userId, "event_id":liveId}));
                 document.getElementById("messageInput").value = "";
             }
         }

@@ -20,9 +20,6 @@ public class Participant {
     @JoinColumn(name = "event_id", nullable = false) 
     private Event event; 
 
-    @Column(name = "participant_id", nullable = false, unique = false)
-    private String participantId;
-
     @Column(name = "session_id", nullable = false)
     private String sessionId;
 
@@ -40,5 +37,4 @@ public class Participant {
 
     @Column(name = "username")
     private String username;
-
 }
