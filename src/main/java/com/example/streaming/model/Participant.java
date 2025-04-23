@@ -32,6 +32,9 @@ public class Participant {
     @Column(name = "is_cohost", nullable = false)
     private boolean isCohost;
 
+    @Column(name = "is_speaking")
+    private boolean isSpeaking;
+
     @Column(name = "user_id")
     private String userId;
 

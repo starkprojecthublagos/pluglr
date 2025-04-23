@@ -53,7 +53,7 @@ public class Event {
     @Column(name = "visibility")
     private VisibilityChoices visibility = VisibilityChoices.PUBLIC;
 
-    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<Participant> participants = new ArrayList<>();
 
    

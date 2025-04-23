@@ -44,4 +44,10 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
 
     @Query("SELECT p FROM Participant p WHERE p.event.roomId = :eventId AND p.userId = :participantId")  
     Optional<Participant> findByEventIdAndUserId(@Param("eventId") String eventId, @Param("participantId") String participantId);  
+    
+    @Query("SELECT p.sessionId FROM Participant p WHERE p.participantId = :participantId")
+    String findSessionIdForParticipant(@Param("participantId") String participantId);
+
+    
+
 }

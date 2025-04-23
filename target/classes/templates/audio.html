@@ -91,9 +91,9 @@
         let isCoHostJoin = false;
         let coHostUserId = null;
         let coHostUsername = null;
-        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0NTM0MjM4MywiaWF0IjoxNzQ1MjU1OTgzfQ.Cz9ES5eaFUcVGAjQdEiBsHThCcisWmLyjfvaoQ3Ir8E"
+        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0NTQ4NDMxMywiaWF0IjoxNzQ1Mzk3OTEzfQ.-z1_lEPR7iJ9XcOMe8pM9Hr7z1BZKX31wsr4UVwdncU"
         document.getElementById("start").addEventListener("click", async () => {
-            socket = new WebSocket(`ws://localhost:8011/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
+            socket = new WebSocket(`wss://apps.pluglr.com/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
             socket.onopen = () => console.log("WebSocket connected!");
 
             socket.onmessage = async (event) => {

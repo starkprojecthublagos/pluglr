@@ -15,7 +15,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT e FROM Event e WHERE e.roomId = :roomId")
     Optional<Event> findByRoomId(@Param("roomId") String roomId);
     
-    @Query("SELECT e FROM Event e WHERE e.roomId = :roomId")
+    @Query("SELECT e FROM Event e JOIN FETCH e.participants WHERE e.roomId = :roomId")
     Event findAllParticipantsByRoomId(@Param("roomId") String roomId);
 
     Optional<Event> findByRoomIdAndStatus(String roomId, String status);
@@ -31,5 +31,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT e FROM Event e WHERE e.hostSessionId = :sessionId")
     Optional<Event> findByHostSessionId(@Param("sessionId") String sessionId);
 
+    @Query("SELECT e FROM Event e JOIN FETCH e.participants WHERE e.id = :id")
+    Event findAllParticipantsById(@Param("id") Long id);
 
+    
 }
