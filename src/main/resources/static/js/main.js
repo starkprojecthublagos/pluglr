@@ -536,3 +536,7 @@ class AudioQueueManager {
         const int16Array = new Int16Array(buffer);
         audioQueueManager.addAudioToQueue(int16Array);
     }
+
+    document.getElementById("sendMessageBtn").addEventListener("click", () => {
+        sendMessage();
+    });
