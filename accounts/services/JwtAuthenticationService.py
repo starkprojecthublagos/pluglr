@@ -12,8 +12,8 @@ def create_access_token(user_id):
     payload = {
         'roles': ['USER'],
         'user_id': user_id,
-        # Token expires in 1 day
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1),
+        # Token expires in 30 day
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=30),
         'iat': datetime.datetime.utcnow(),  # Issued at
     }
     token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm='HS256')
@@ -55,7 +55,7 @@ def create_refresh_token(user_id):
         'roles': ['USER'],
         'user_id': user_id,
         # Token expires in 7 days
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7),
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=30),
         'iat': datetime.datetime.utcnow(),  # Issued at
     }
     token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm='HS256')

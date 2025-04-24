@@ -1,8 +1,10 @@
 import json
+import time
 import uuid
 import logging
 import redis
 import jwt
+import noisereduce as nr
 import numpy as np
 from datetime import datetime
 from django.conf import settings
@@ -13,18 +15,161 @@ from accounts.models import CustomUser
 from .models import Participant, Room, StreamType
 from django.core.exceptions import ObjectDoesNotExist
 from channels.generic.websocket import AsyncWebsocketConsumer
+# import opuslib
+from scipy import signal
 
 # Redis connection
-redis_client = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
+redis_client = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)
 # Constants for event types
 SWITCH_TO_VIDEO = "switching_to_video"
 SWITCH_TO_AUDIO = "switching_to_audio"
 SWITCH_TO_SCREEN_SHARING = "switching_to_screen_sharing"
 
-active_streams = {}  
+active_streams = {}
 active_audio_streams = {}
 logger = logging.getLogger(__name__)
+
+
 class StreamingConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.noise_profile = None
+        # self.opus_encoder = opuslib.Encoder(48000, 1, 'audio')  # 48kHz, mono
+        self.audio_processing_enabled = True
+    
+    async def handle_binary_data(self, bytes_data):
+        """Enhanced audio processing with co-host support and clean mixing"""
+        if self.event_id not in active_streams:
+            return
+
+        mode = active_streams[self.event_id].get("stream_mode", "audio")
+        
+        try:
+            if mode == "audio":
+                # Check speaking privileges
+                is_host = str(self.user_id) == active_streams[self.event_id]["host"]
+                is_cohost = self.channel_name in active_streams[self.event_id].get("cohosts", {})
+                
+                if not (is_host or is_cohost):
+                    return  # Only host/cohosts can broadcast audio
+
+                # Process and store audio
+                current_time = time.time()
+                pcm_data = np.frombuffer(bytes_data, dtype=np.int16)
+                
+                if self.audio_processing_enabled:
+                    processed_audio = await self.enhance_audio(pcm_data)
+                else:
+                    processed_audio = pcm_data.astype(np.float32) / 32768.0
+                
+                # Store with metadata
+                active_audio_streams[self.participant_id] = {
+                    "audio": processed_audio,
+                    "timestamp": current_time,
+                    "is_host": is_host,
+                    "is_cohost": is_cohost,
+                    "volume": np.sqrt(np.mean(processed_audio**2))
+                }
+
+                # Mix and broadcast
+                mixed_audio = await self.mix_audio_streams()
+                if mixed_audio is not None:
+                    opus_data = self.opus_encoder.encode(mixed_audio.tobytes(), len(mixed_audio))
+                    
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            "type": "binary_data_received",
+                            "bytes_data": opus_data,
+                            "codec": "opus",
+                            "sample_rate": 48000,
+                            "active_speakers": self.get_active_speakers(),
+                            "is_mixed": True
+                        }
+                    )
+
+        except Exception as e:
+            print(f"Audio processing error: {e}")
+    
+    async def enhance_audio(self, pcm_data):
+        """Apply audio processing pipeline"""
+        audio_float = pcm_data.astype(np.float32) / 32768.0
+        
+        # Initialize noise profile if needed
+        if self.noise_profile is None:
+            self.noise_profile = nr.fft.fft(audio_float[:160])  # First 10ms
+            
+        # 1. Noise reduction
+        audio_float = nr.reduce_noise(
+            audio_clip=audio_float,
+            noise_profile=self.noise_profile,
+            sr=16000,
+            stationary=False
+        )
+        
+        # 2. High-pass filter (100Hz cutoff)
+        b, a = signal.butter(5, 100/(16000/2), btype='high')
+        audio_float = signal.filtfilt(b, a, audio_float)
+        
+        # 3. Normalization
+        max_val = np.max(np.abs(audio_float))
+        if max_val > 0:
+            audio_float = audio_float * (0.9 / max_val)
+            
+        return audio_float
+        
+    async def mix_audio_streams(self):
+        """Intelligently mix multiple audio streams"""
+        self.clean_stale_streams(threshold=0.3)  # Remove streams older than 300ms
+        
+        streams = list(active_audio_streams.values())
+        if not streams:
+            return None
+            
+        # Sort by priority (host > cohost > volume)
+        streams.sort(key=lambda x: (-x['is_host'], -x['is_cohost'], -x['volume']))
+        
+        # Get the longest stream length
+        max_len = max(len(s['audio']) for s in streams)
+        mixed = np.zeros(max_len, dtype=np.float32)
+        
+        # Mix with ducking (reduce volume of secondary speakers)
+        for i, stream in enumerate(streams[:3]):  # Max 3 simultaneous speakers
+            weight = 1.0 if i == 0 else 0.7 / i
+            audio = stream['audio']
+            if len(audio) < max_len:
+                audio = np.pad(audio, (0, max_len - len(audio)))
+            mixed += audio * weight
+        
+        # Final limiting to prevent clipping
+        peak = np.max(np.abs(mixed))
+        if peak > 1.0:
+            mixed = mixed * (0.95 / peak)
+            
+        return (mixed * 32767).astype(np.int16)
+        
+    def clean_stale_streams(self, threshold=0.3):
+        """Remove inactive audio streams"""
+        current_time = time.time()
+        stale = [pid for pid, s in active_audio_streams.items() 
+                if current_time - s['timestamp'] > threshold]
+        for pid in stale:
+            active_audio_streams.pop(pid, None)
+
+    def get_active_speakers(self):
+        """Return metadata about current speakers"""
+        return [
+            {
+                "participant_id": pid,
+                "username": active_streams[self.event_id]["participants"].get(pid, {}).get("username", ""),
+                "is_host": data["is_host"],
+                "is_cohost": data["is_cohost"],
+                "volume": float(data["volume"])
+            }
+            for pid, data in active_audio_streams.items()
+            if time.time() - data["timestamp"] < 0.3  # Only recent speakers
+        ]
+		
     async def connect(self):
         """Handle both stream start and join based on URL."""
         global active_streams
@@ -42,7 +187,7 @@ class StreamingConsumer(AsyncWebsocketConsumer):
 
             await self.send(json.dumps({
                 "type": "active_streams",
-                "streams": active_streams  # Send the list of active room names
+                "streams": active_streams  
             }))
             return
         # Extract token from query params
@@ -514,7 +659,6 @@ class StreamingConsumer(AsyncWebsocketConsumer):
 
             try:
                 if mode == SWITCH_TO_AUDIO:
-    
                     # Assuming 16-bit PCM, little-endian, mono, 16kHz
                     pcm_data = np.frombuffer(bytes_data, dtype=np.int16)
 
@@ -524,16 +668,37 @@ class StreamingConsumer(AsyncWebsocketConsumer):
                     # Store the latest audio chunk for this participant
                     active_audio_streams[self.participant_id] = normalized_data
 
-                    # Mix all active audio streams
-                    # if len(active_audio_streams) > 1:
-                    #     mixed_audio = sum(active_audio_streams.values()) / len(active_audio_streams)
-                    #     mixed_audio = np.clip(mixed_audio, -1.0, 1.0)  # Prevent clipping
-                    # else:
-                    mixed_audio = normalized_data  # Single speaker
+                    # Get all active audio streams (including broadcaster if they're speaking)
+                    all_audio_streams = list(active_audio_streams.values())
+
+                    # Mix all active audio streams except the current user's own audio
+                    other_streams = [stream for pid, stream in active_audio_streams.items()
+                                     if pid != self.participant_id]
+
+                    if other_streams:
+                        mixed_audio = sum(other_streams) / len(other_streams)
+                        mixed_audio = np.clip(
+                            mixed_audio, -1.0, 1.0)  # Prevent clipping
+                    else:
+                        # Silence if no other streams
+                        mixed_audio = np.zeros_like(normalized_data)
 
                     # Convert back to 16-bit PCM
-                    processed_bytes = (mixed_audio * 32768).astype(np.int16).tobytes()
+                    processed_bytes = (
+                        mixed_audio * 32768).astype(np.int16).tobytes()
                     event_type = "audio_chunk"
+
+                    # Broadcast the audio to all other participants (including broadcaster)
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            "type": "binary_data_received",
+                            "bytes_data": processed_bytes,
+                            "event_type": event_type,
+                            "participant_id": self.participant_id,
+                            "is_broadcaster": str(self.user_id) == active_streams[self.event_id].get("host"),
+                        }
+                    )
 
                 elif mode == SWITCH_TO_VIDEO:
                    
@@ -554,6 +719,7 @@ class StreamingConsumer(AsyncWebsocketConsumer):
                         "type": "binary_data_received",
                         "bytes_data": processed_bytes,
                         "event_type": event_type,
+                        "participant_id": self.participant_id, 
                     }
                 )
 
@@ -562,8 +728,30 @@ class StreamingConsumer(AsyncWebsocketConsumer):
 
     async def binary_data_received(self, event):
         """Send binary data (audio/video) to clients with correct event type."""
-        await self.send(text_data=json.dumps({"event_type": event["event_type"]}))# Send metadata first
-        await self.send(bytes_data=event["bytes_data"])  # Then send the binary data
+        is_broadcaster = str(
+            self.user_id) == active_streams[self.event_id].get("host")
+        sender_is_broadcaster = event.get(
+            "participant_id") == active_streams[self.event_id].get("host")
+
+        should_send = False
+
+        if is_broadcaster:
+            # Broadcaster should receive all non-broadcaster audio
+            should_send = not sender_is_broadcaster
+        else:
+            # Participants should receive broadcaster audio and other cohost audio
+            should_send = sender_is_broadcaster or (
+                event.get("participant_id") in active_streams[self.event_id].get(
+                    "cohosts", {})
+            )
+
+        if should_send:
+            await self.send(text_data=json.dumps({
+                "event_type": event["event_type"],
+                "participant_id": event.get("participant_id"),
+                "is_speaking": True
+            }))
+            await self.send(bytes_data=event["bytes_data"])
 
     async def switch_streaming_mode(self, mode):
         if self.event_id in active_streams:
@@ -793,11 +981,11 @@ class StreamingConsumer(AsyncWebsocketConsumer):
         if not self.event_id:
             return None
         
-        scheme = "wss" if self.scope.get("scheme", "ws") == "https" else "ws"
-        server = self.scope.get("server", ("localhost", 8000))  # Default host & port
-        host, port = server if isinstance(server, tuple) else ("localhost", 8000)
+        scheme = "wss" if self.scope.get("scheme", "wss") == "https" else "wss"
+        server = self.scope.get("server", ("api.pluglr.com", 8000))  # Default host & port
+        host, port = server if isinstance(server, tuple) else ("api.pluglr.com", 8000)
 
-        return f"{scheme}://{host}:{port}/ws/stream/live/join/event/{self.event_id}/"
+        return f"{scheme}://{host}/ws/stream/live/join/event/{self.event_id}/"
 
     async def invite_notification(self, event):
         """ WebSocket handler for user invitation """
@@ -823,6 +1011,9 @@ class StreamingConsumer(AsyncWebsocketConsumer):
             "participant_id": event["participant_id"],
             "message": event["message"]
         }))
+    
+        # Initialize audio stream for new cohost
+        active_audio_streams[event["participant_id"]] = np.zeros(16000, dtype=np.float32)
 
     async def cohost_removed(self, event):
         """Notify all users when a co-host is removed."""
