@@ -1405,7 +1405,6 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             e.printStackTrace();
         }
     }
-   
 
     private void handleCohostSpeakingStatus(String eventId, String participantId, boolean isSpeaking) {
         try {
