@@ -20,7 +20,7 @@
         let coHostUsername = null;
         let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6WyJVU0VSIl0sInVzZXJfaWQiOjEsImV4cCI6MTc0NTQ4NDMxMywiaWF0IjoxNzQ1Mzk3OTEzfQ.-z1_lEPR7iJ9XcOMe8pM9Hr7z1BZKX31wsr4UVwdncU"
         document.getElementById("start").addEventListener("click", async () => {
-            socket = new WebSocket(`wss://apps.plulgr.com/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
+            socket = new WebSocket(`wss://apps.pluglr.com/ws/stream/start/live/${userId}?token=${encodeURIComponent(token)}`);
             socket.onopen = () => console.log("WebSocket connected!");
 
             socket.onmessage = async (event) => {
