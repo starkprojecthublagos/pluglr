@@ -139,8 +139,8 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             return;
         }
 
-       
-        BinaryMessage audioMessage = new BinaryMessage(audioData);
+        byte[] cleanedAudio = RNNoiseProcessor.processAudioFrame(audioData);
+        BinaryMessage audioMessage = new BinaryMessage(cleanedAudio);
 
         // Get ALL active sessions in the room (host + cohosts + participants)
         List<WebSocketSession> allSessions = getRoomParticipants(roomId, senderSessionId);
@@ -612,7 +612,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     
     // Updated implementation that gets user details internally
     private String generateStreamingLink(String eventId) {
-        return String.format("wss://apps.pluglr.com/ws/stream/live/join/event/%s/", eventId);
+        return String.format("wss://apps.plulgr.com/ws/stream/live/join/event/%s/", eventId);
     }
     
     
