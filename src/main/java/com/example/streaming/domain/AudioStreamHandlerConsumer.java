@@ -41,9 +41,8 @@ import org.springframework.web.socket.*;
 
 @Component
 public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
-    private static final int MAX_FRAME_SIZE = 480 * 2 * 2; // 20ms of 48kHz stereo audio
+
     private static final short SILENCE_THRESHOLD = 500;
-    
     private final ConcurrentMap<String, String> sessionToRoomMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, WebSocketSession> activeSessions = new ConcurrentHashMap<>();
     // Active connections tracking
@@ -57,18 +56,23 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     @Autowired
     private EventRepository eventRepository;
 
+
     @Autowired
     private ChatMessageRepository chatMessageRepository;
+
 
     @Autowired
     private ParticipantRepository participantRepository;
 
+
     @Autowired
     private UserServiceClient userServiceClient;
+
 
     @Autowired
     private WebSocketSessionManager sessionManager;
     
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws IOException {
         URI uri = session.getUri();
@@ -109,6 +113,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         }
         sessions.put(session.getId(), session);
     }
+
 
     @Override
     protected void handleBinaryMessage(WebSocketSession senderSession, BinaryMessage message) throws Exception {
@@ -153,7 +158,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         }
     }
 
-        // Helper method to get all active participants in a room
+    // Helper method to get all active participants in a room
     private List<WebSocketSession> getRoomParticipants(String roomId, String excludeSessionId) {
         List<WebSocketSession> participants = new ArrayList<>();
         // Get all participant session IDs for this room
@@ -278,6 +283,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         }
     }
 
+    
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         sessions.remove(session.getId());
@@ -606,7 +612,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     
     // Updated implementation that gets user details internally
     private String generateStreamingLink(String eventId) {
-        return String.format("wss://apps.pluglr.com/ws/stream/live/join/event/%s/", eventId);
+        return String.format("wss://apps.plulgr.com/ws/stream/live/join/event/%s/", eventId);
     }
     
     
@@ -742,40 +748,48 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
         eventRepository.save(event);
     }
 
-    
     // Enhanced broadcast method
     public void broadcastToAllSessions(String roomId, Object payload) {
         try {
-            // 1. Fetch event by roomId
-            Optional<Event> event = eventRepository.findByRoomId(roomId);
-            if (!event.isPresent()) {
-                System.out.println("Room not found for eventId: " + roomId);
+            // 1. Fetch event by roomId with participants
+            Event event = eventRepository.findAllParticipantsByRoomId(roomId);
+            if (event == null) {
+                System.out.println("Room not found for roomId: " + roomId);
                 return;
             }
 
-            // 2. Find participant by event and participantId
-            Event eventWithParticipants = eventRepository.findAllParticipantsById(event.get().getId());
-            List<Participant> participants = eventWithParticipants.getParticipants();
-
+            List<Participant> participants = event.getParticipants();
             if (participants == null || participants.isEmpty()) {
-                System.out.println("⚠️ No participants in room: " + roomId);
+                System.out.println("No participants found in room");
                 return;
             }
 
             String jsonMessage = objectMapper.writeValueAsString(payload);
             TextMessage textMessage = new TextMessage(jsonMessage);
-          
+
+            // 5. Broadcast to all participants
             for (Participant participant : participants) {
                 String sessionId = participant.getSessionId();
-                WebSocketSession session = sessionManager.getSession(sessionId);
-               
-                if (session != null && session.isOpen()) {
+                WebSocketSession targetSession = sessionManager.getSession(sessionId);
+
+                if (targetSession != null && targetSession.isOpen()) {
                     try {
-                        session.sendMessage(textMessage);
+                        targetSession.sendMessage(textMessage);
                     } catch (IOException e) {
-                        System.out.println("❌ Failed to send to session " + sessionId + ": " + e.getMessage());
                         sessionManager.removeSession(sessionId);
+                        System.out.println("Cleaned up disconnected session: " + sessionId);
                     }
+                }
+            }
+
+            // 6. Send to host
+            WebSocketSession hostSession = sessionManager.getSession(event.getHostSessionId());
+            if (hostSession != null && hostSession.isOpen()) {
+                try {
+                    hostSession.sendMessage(textMessage);
+                } catch (IOException e) {
+                    sessionManager.removeSession(event.getHostSessionId());
+                    System.out.println("Failed to send to host: " + e.getMessage());
                 }
             }
         } catch (Exception e) {
@@ -1369,13 +1383,19 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("type", "chat_history");
-            payload.put("messages", messages);
-
+            payload.put("chat_message", messages);
+            String sessionId = null;
+            Optional<Participant> participant = participantRepository.findByEventIdAndUserId(eventId,
+                    targetParticipantId);
+            if (participant.isPresent()) {
+                sessionId = participant.get().getSessionId();
+            }
+            
             String jsonPayload = new ObjectMapper().writeValueAsString(payload);
             TextMessage textMessage = new TextMessage(jsonPayload);
 
             // 3. Send to target participant
-            WebSocketSession session = sessionManager.getSessionByParticipantId(targetParticipantId);
+            WebSocketSession session = sessionManager.getSession(sessionId);
             if (session != null && session.isOpen()) {
                 session.sendMessage(textMessage);
             }
