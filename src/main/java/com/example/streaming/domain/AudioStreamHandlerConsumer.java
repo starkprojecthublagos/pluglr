@@ -112,18 +112,20 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession senderSession, BinaryMessage message) throws Exception {
         String senderSessionId = senderSession.getId();
-        String roomId = getRoomIdBySessionId(senderSessionId);
-        if (roomId == null)
-            return;
-
-        // 2. Process audio frame
         byte[] audioData = message.getPayload().array();
-        // Silence detection - only if you want server-side filtering
+
+        int MAX_FRAME_SIZE = 4096 * 2;
+        if (audioData.length > MAX_FRAME_SIZE) {
+            System.out.println("❌ Frame too large. Skipping...");
+            return;
+        }
+
+        // Silence detection
         boolean isSilent = true;
         for (int i = 0; i < audioData.length; i += 2) {
             short sample = (short) ((audioData[i + 1] << 8) | (audioData[i] & 0xFF));
             // Adjust threshold as needed
-            if (Math.abs(sample) > SILENCE_THRESHOLD) {
+            if (Math.abs(sample) > 500) {
                 isSilent = false;
                 break;
             }
@@ -133,14 +135,23 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
             return;
         }
 
-        byte[] cleanedAudio = RNNoiseProcessor.processAudioFrame(audioData);
-        BinaryMessage audioMessage = new BinaryMessage(cleanedAudio);
+        // Find which room the sender belongs to
+        String roomId = getRoomIdBySessionId(senderSessionId);
+        if (roomId == null) {
+            System.out.println("❌ No room found for session: " + senderSessionId);
+            return;
+        }
 
-        // Get ALL active sessions in the room (host + cohosts + participants)
-        List<WebSocketSession> allSessions = getRoomParticipants(roomId, senderSessionId);
+        // Get all active participants in the room
+        List<WebSocketSession> recipients = getRoomParticipants(roomId, senderSessionId);
+        // if (recipients.isEmpty()) {
+        // System.out.println("⚠️ No active participants in room: " + roomId);
+        // return;
+        // }
 
-        // Broadcast to everyone except sender
-        for (WebSocketSession recipient : allSessions) {
+        // Broadcast audio to all participants
+        BinaryMessage audioMessage = new BinaryMessage(audioData);
+        for (WebSocketSession recipient : recipients) {
             try {
                 if (recipient.isOpen()) {
                     recipient.sendMessage(audioMessage);
@@ -150,6 +161,7 @@ public class AudioStreamHandlerConsumer extends AbstractWebSocketHandler {
                 cleanupDisconnectedSession(recipient.getId());
             }
         }
+
     }
 
     // Helper method to get all active participants in a room
