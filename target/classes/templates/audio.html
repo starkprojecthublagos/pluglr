@@ -146,51 +146,15 @@
                     } 
                 });
 
-                 // 2. Create PeerConnection
-                const pc = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: "stun:stun.l.google.com:19302" },
-                        {
-                            urls: "turn:openrelay.metered.ca:443",
-                            username: "openrelayproject",
-                            credential: "openrelayproject"
-                        }
-                    ]
-                });
-               
-                 // 3. Add audio track from current stream
-                currentStream.getTracks().forEach(track => pc.addTrack(track, currentStream));
-
-                // 4. Create and send offer to WebSocket server
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                socket.send(JSON.stringify({ type: "offer", offer }));
-
-                // 5. Handle ICE candidates (peer-to-peer connection)
-                pc.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        socket.send(JSON.stringify({
-                            type: "candidate",
-                            candidate: event.candidate
-                        }));
-                    }
-                };
-
-                // 6. Handle remote stream (audio stream from other peers)
-                pc.ontrack = (event) => {
-                    const remoteStream = event.streams[0];
-                    // Optionally, connect to an audio element or handle the stream
-                    console.log("Received remote stream", remoteStream);
-                };
-
-                  // 7. Optional: Audio processing can still be handled in WebRTC for tweaking
                 const audioContext = new AudioContext({ sampleRate: 16000 });
                 const mediaStreamSource = audioContext.createMediaStreamSource(currentStream);
+                
+                // 2. Create processing nodes
                 const processor = audioContext.createScriptProcessor(1024, 1, 1);
                 const gainNode = audioContext.createGain();
                 gainNode.gain.value = 1.2; // Slight boost
-
-                // Connect processing chain
+                
+                // 3. Connect processing chain
                 mediaStreamSource.connect(gainNode);
                 gainNode.connect(processor);
                 processor.connect(audioContext.destination);

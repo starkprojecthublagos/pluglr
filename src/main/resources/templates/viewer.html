@@ -88,7 +88,7 @@
             }
             
             initializeWebSocket() {
-                const backendUrl = `ws://localhost:8011/ws/stream/start/live/${this.roomId}`;
+                const backendUrl = `wss://apps.plulgr.com/ws/stream/start/live/${this.roomId}`;
                 
                 try {
                     this.socket = new WebSocket(backendUrl);
@@ -356,7 +356,7 @@
                 console.error("WebSocket error:", error);
                 this.showNotification("Connection error occurred", 'error');
             }
-            
+
             reconnect() {
                 console.log("Attempting to reconnect...");
                 this.leaveStream();
