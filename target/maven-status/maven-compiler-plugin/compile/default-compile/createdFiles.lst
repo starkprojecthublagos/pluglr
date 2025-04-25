@@ -29,7 +29,6 @@ com\example\streaming\enums\UserStatus.class
 com\example\streaming\responses\UserResponseDTO.class
 com\example\streaming\config\WebConfig.class
 com\example\streaming\responses\AuthResponse.class
-com\example\streaming\domain\AudioStreamHandlerConsumer$1.class
 com\example\streaming\enums\StreamType.class
 com\example\streaming\exceptions\UserNotFoundException.class
 com\example\streaming\responses\AuthResponse$AuthResponseBuilder.class

@@ -15,4 +15,14 @@ public class ParticipantController {
     public String host() {
         return "audio"; 
     }
+
+    @GetMapping("/viewer") 
+    public String viewer() {
+        return "viewer"; 
+    }
+
+    @GetMapping("/testhost") 
+    public String testhost() {
+        return "testhost"; 
+    }
 }
