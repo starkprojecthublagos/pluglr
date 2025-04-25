@@ -8,7 +8,7 @@ spring:
     password: 'powergrid@2?.net'
     driver-class-name: org.postgresql.Driver
     hikari:
-      minimum-idle: 5
+      minimum-idle: 5 
       maximum-pool-size: 10
       idle-timeout: 30000
       connection-timeout: 20000
