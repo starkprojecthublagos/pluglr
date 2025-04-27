@@ -50,7 +50,7 @@
             socket.send(JSON.stringify({
                 type: "host_ready",
                 role: "host",
-                room_id: "host_event_id" // adjust as needed
+                room_id: "host_event_id" 
             }));
         };
 
@@ -107,7 +107,37 @@
                 });
 
                 // Step 2: Set up RTCPeerConnection
-                peerConnection = new RTCPeerConnection();
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                            {
+                                urls: "stun:stun.relay.metered.ca:80",
+                            },
+                            {
+                                urls: "turn:global.relay.metered.ca:80",
+                                username: "f41e6ed59c9fead32c5f40e8",
+                                credential: "nrjse7jNfXAMi0Rs",
+                            },
+                            {
+                                urls: "turn:global.relay.metered.ca:80?transport=tcp",
+                                username: "f41e6ed59c9fead32c5f40e8",
+                                credential: "nrjse7jNfXAMi0Rs",
+                            },
+                            {
+                                urls: "turn:global.relay.metered.ca:443",
+                                username: "f41e6ed59c9fead32c5f40e8",
+                                credential: "nrjse7jNfXAMi0Rs",
+                            },
+                            {
+                                urls: "turns:global.relay.metered.ca:443?transport=tcp",
+                                username: "f41e6ed59c9fead32c5f40e8",
+                                credential: "nrjse7jNfXAMi0Rs",
+                            }
+                        ],
+                    iceTransportPolicy: 'all',
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require',
+                    iceCandidatePoolSize: 100 // Better for multiple viewers
+                });
 
                 // Add local audio stream to RTCPeerConnection
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -137,15 +167,27 @@
 
         // Function to stop the audio stream
         function stopAudioStream() {
+            // Close all viewer connections
+            peerConnections.forEach((pc, viewerId) => {
+                pc.close();
+                peerConnections.delete(viewerId);
+            });
+            
+            // Close main connection
             if (peerConnection) {
                 peerConnection.close();
+                peerConnection = null;
             }
+            
+            // Stop local stream
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
             }
+            
             startStreamButton.disabled = false;
             stopStreamButton.disabled = true;
-            console.log("Stream stopped");
+            console.log("Stream stopped and all connections cleaned up");
         }
 
         // Handle incoming SDP offer from backend (listeners)
@@ -186,47 +228,70 @@
         }
 
         async function createConnectionForViewer(viewerId) {
-            console.log(viewerId);
-            
-            if (!localStream) {
-                try {
-                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                } catch (err) {
-                    console.error("Failed to get local stream", err);
-                    return;
-                }
-            }
-
-            const pc = new RTCPeerConnection();
-
-            // Add local tracks
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.send(JSON.stringify({
-                        type: "ice_candidate",
-                        viewer_id: viewerId,
-                        candidate: event.candidate,
-                        room_id: eventId  
-                    }));
-                }
-            };
-
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-
-            // Send offer to viewer
-            socket.send(JSON.stringify({
-                type: "offer",
-                viewer_id: viewerId,
-                room_id: eventId, // Make sure this is defined
-                offer: offer
-            }));
-
-            peerConnections.set(viewerId, pc);
+    console.log("Creating connection for viewer:", viewerId);
+    
+    if (!localStream) {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } catch (err) {
+            console.error("Failed to get local stream", err);
+            return;
         }
+    }
 
+    const pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { 
+                urls: [
+                    'turn:your-real-turn-server.com:3478?transport=udp',
+                    'turn:your-real-turn-server.com:3478?transport=tcp'
+                ],
+                username: 'your_username',
+                credential: 'your_password'
+            }
+        ],
+        iceTransportPolicy: 'all'
+    });
+
+    // Add local tracks
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            console.log("Host generated ICE candidate for viewer:", viewerId, event.candidate);
+            socket.send(JSON.stringify({
+                type: "ice_candidate",
+                viewer_id: viewerId,
+                candidate: event.candidate,
+                room_id: eventId  
+            }));
+        }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        console.log(`ICE state for viewer ${viewerId}:`, pc.iceConnectionState);
+        if (pc.iceConnectionState === 'failed') {
+            console.error("ICE failed for viewer:", viewerId);
+        }
+    };
+
+    try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        socket.send(JSON.stringify({
+            type: "offer",
+            viewer_id: viewerId,
+            room_id: eventId,
+            offer: offer
+        }));
+
+        peerConnections.set(viewerId, pc);
+    } catch (error) {
+        console.error("Error creating offer for viewer:", viewerId, error);
+    }
+}
 
     </script>
 </body>
