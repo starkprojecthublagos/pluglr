@@ -23,6 +23,6 @@ public class ParticipantController {
 
     @GetMapping("/testhost") 
     public String testhost() {
-        return "host"; 
+        return "testhost"; 
     }
 }

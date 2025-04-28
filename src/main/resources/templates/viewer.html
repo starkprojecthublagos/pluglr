@@ -192,45 +192,32 @@
             }
             
             initializePeerConnection() {
-                // Use the TURN server configuration you provided
                 this.peerConnection = new RTCPeerConnection({
-                    iceServers: [
-                        {
-                            urls: "stun:stun.relay.metered.ca:80",
-                        },
-                        {
-                            urls: "turn:global.relay.metered.ca:80",
-                            username: "f41e6ed59c9fead32c5f40e8",
-                            credential: "nrjse7jNfXAMi0Rs",
-                        },
-                        {
-                            urls: "turn:global.relay.metered.ca:80?transport=tcp",
-                            username: "f41e6ed59c9fead32c5f40e8",
-                            credential: "nrjse7jNfXAMi0Rs",
-                        },
-                        {
-                            urls: "turn:global.relay.metered.ca:443",
-                            username: "f41e6ed59c9fead32c5f40e8",
-                            credential: "nrjse7jNfXAMi0Rs",
-                        },
-                        {
-                            urls: "turns:global.relay.metered.ca:443?transport=tcp",
-                            username: "f41e6ed59c9fead32c5f40e8",
-                            credential: "nrjse7jNfXAMi0Rs",
-                        },
-                    ],
-                    iceTransportPolicy: 'all',
-                    bundlePolicy: 'max-bundle',
-                    rtcpMuxPolicy: 'require',
-                    iceCandidatePoolSize: 0
+                      iceServers: [
+                            { 
+                                urls: [
+                                    "turn:global.relay.metered.ca:80",
+                                    "turn:global.relay.metered.ca:80?transport=tcp",
+                                    "turn:global.relay.metered.ca:443",
+                                    "turns:global.relay.metered.ca:443?transport=tcp"
+                                ],
+                                username: "f41e6ed59c9fead32c5f40e8",
+                                credential: "nrjse7jNfXAMi0Rs"
+                            },
+                            { urls: "stun:stun.relay.metered.ca:80" }
+                        ],
+                        iceTransportPolicy: 'all', // Try both relay and non-relay
+                        bundlePolicy: 'max-bundle',
+                        rtcpMuxPolicy: 'require'
                 });
 
-                // Rest of your existing configuration...
+                // Configure audio settings
                 const audioSenderOptions = {
                     priority: 'high',
                     degradationPreference: 'maintain-framerate'
                 };
 
+                // Add connection state handlers
                 this.peerConnection.onconnectionstatechange = () => {
                     const state = this.peerConnection.connectionState;
                     console.log("Connection state:", state);
@@ -244,6 +231,7 @@
                     console.log("ICE connection state:", this.peerConnection.iceConnectionState);
                 };
 
+                // Network quality monitoring
                 this.peerConnection.onicegatheringstatechange = () => {
                     console.log("ICE gathering state:", this.peerConnection.iceGatheringState);
                 };

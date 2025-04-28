@@ -108,35 +108,22 @@
 
                 // Step 2: Set up RTCPeerConnection
                 peerConnection = new RTCPeerConnection({
-                    iceServers: [
-                            {
-                                urls: "stun:stun.relay.metered.ca:80",
-                            },
-                            {
-                                urls: "turn:global.relay.metered.ca:80",
+                      iceServers: [
+                            { 
+                                urls: [
+                                    "turn:global.relay.metered.ca:80",
+                                    "turn:global.relay.metered.ca:80?transport=tcp",
+                                    "turn:global.relay.metered.ca:443",
+                                    "turns:global.relay.metered.ca:443?transport=tcp"
+                                ],
                                 username: "f41e6ed59c9fead32c5f40e8",
-                                credential: "nrjse7jNfXAMi0Rs",
+                                credential: "nrjse7jNfXAMi0Rs"
                             },
-                            {
-                                urls: "turn:global.relay.metered.ca:80?transport=tcp",
-                                username: "f41e6ed59c9fead32c5f40e8",
-                                credential: "nrjse7jNfXAMi0Rs",
-                            },
-                            {
-                                urls: "turn:global.relay.metered.ca:443",
-                                username: "f41e6ed59c9fead32c5f40e8",
-                                credential: "nrjse7jNfXAMi0Rs",
-                            },
-                            {
-                                urls: "turns:global.relay.metered.ca:443?transport=tcp",
-                                username: "f41e6ed59c9fead32c5f40e8",
-                                credential: "nrjse7jNfXAMi0Rs",
-                            }
+                            { urls: "stun:stun.relay.metered.ca:80" }
                         ],
-                    iceTransportPolicy: 'all',
-                    bundlePolicy: 'max-bundle',
-                    rtcpMuxPolicy: 'require',
-                    iceCandidatePoolSize: 100 // Better for multiple viewers
+                        iceTransportPolicy: 'all', // Try both relay and non-relay
+                        bundlePolicy: 'max-bundle',
+                        rtcpMuxPolicy: 'require'
                 });
 
                 // Add local audio stream to RTCPeerConnection
@@ -167,27 +154,15 @@
 
         // Function to stop the audio stream
         function stopAudioStream() {
-            // Close all viewer connections
-            peerConnections.forEach((pc, viewerId) => {
-                pc.close();
-                peerConnections.delete(viewerId);
-            });
-            
-            // Close main connection
             if (peerConnection) {
                 peerConnection.close();
-                peerConnection = null;
             }
-            
-            // Stop local stream
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
             }
-            
             startStreamButton.disabled = false;
             stopStreamButton.disabled = true;
-            console.log("Stream stopped and all connections cleaned up");
+            console.log("Stream stopped");
         }
 
         // Handle incoming SDP offer from backend (listeners)
