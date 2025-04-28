@@ -40,362 +40,321 @@
 
     <script>
         class WebRTCViewer {
-            constructor() {
-                this.socket = null;
-                this.peerConnection = null;
-                this.remoteAudio = document.getElementById('remoteAudio');
-                this.viewerId = null;
-                this.hasUserInteracted = false;
-                this.deferredStream = null;
-                this.roomId = null;
-                
-                this.initElements();
-                this.initEventListeners();
-            }
-            
-            initElements() {
-                this.elements = {
-                    connectBtn: document.getElementById('connect'),
-                    leaveBtn: document.getElementById('leave'),
-                    listenBtn: document.getElementById('listenBtn'),
-                    listenPrompt: document.getElementById('listenPrompt'),
-                    eventIdInput: document.getElementById('eventId'),
-                    statusMessage: document.getElementById('statusMessage')
-                };
-            }
-            
-            initEventListeners() {
-                this.elements.connectBtn.addEventListener('click', () => this.connectToStream());
-                this.elements.leaveBtn.addEventListener('click', () => this.leaveStream());
-                this.elements.listenBtn.addEventListener('click', () => this.handleListenClick());
-                
-                // Single interaction listener for autoplay policy
-                document.addEventListener('click', () => {
-                    this.hasUserInteracted = true;
-                    this.tryPlayDeferredStream();
-                }, { once: true });
-            }
-            
-            connectToStream() {
-                this.roomId = this.elements.eventIdInput.value.trim();
-                
-                if (!this.roomId) {
-                    this.showNotification("Please enter a room ID", 'error');
-                    return;
-                }
-                
-                this.initializeWebSocket();
-            }
-            
-            initializeWebSocket() {
-                const backendUrl = `wss://apps.pluglr.com/ws/stream/start/live/${this.roomId}`;
-                
-                try {
-                    this.socket = new WebSocket(backendUrl);
-                    
-                    this.socket.onopen = () => {
-                        this.showStatus("Connecting to stream...");
-                        this.sendWebSocketMessage({
-                            type: "viewer_ready",
-                            role: "viewer",
-                            room_id: this.roomId
-                        });
-                    };
-                    
-                    this.socket.onmessage = (event) => this.handleWebSocketMessage(event);
-                    this.socket.onclose = () => this.handleWebSocketClose();
-                    this.socket.onerror = (error) => this.handleWebSocketError(error);
-                    
-                } catch (error) {
-                    console.error("WebSocket initialization error:", error);
-                    this.showNotification("Failed to connect to server", 'error');
-                }
-            }
-            
-            handleWebSocketMessage(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    switch(data.type) {
-                        case "stream_offer":
-                            this.handleStreamOffer(data);
-                            break;
-                        case "ice_candidate":
-                            this.handleIceCandidate(data);
-                            break;
-                        case "viewer_accepted":
-                            this.viewerId = data.viewer_id;
-                            this.showStatus("Connected to stream");
-                            this.elements.connectBtn.classList.add('d-none');
-                            this.elements.leaveBtn.classList.remove('d-none');
-                            break;
-                        default:
-                            console.log("Unhandled message type:", data.type);
-                    }
-                } catch (error) {
-                    console.error("Error handling WebSocket message:", error);
-                }
-            }
-            
-            handleStreamOffer(offerData) {
-                try {
-                    // Extract needed values
-                    const { viewer_id, room_id, offer, from } = offerData;
-                    
-                    // Validate required fields
-                    if (!offer || !offer.sdp) {
-                        throw new Error("Invalid offer format");
-                    }
-            
-                    // Store the viewer ID for later use
-                    this.viewerId = viewer_id; 
-                    this.initializePeerConnection();
-
-                    this.peerConnection.ontrack = (event) => {
-                        console.log("Received stream:", event.streams[0]);
-                        this.handleIncomingStream(event.streams[0]);
-                    };
-                    
-                    this.peerConnection.onicecandidate = (event) => {
-                        if (event.candidate) {
-                            this.sendWebSocketMessage({
-                                type: "ice_candidate",
-                                viewer_id: offerData.viewer_id,
-                                candidate: event.candidate,
-                                room_id: offerData.room_id
-                            });
-                        }
-                    };
-                    
-                    this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerData.offer))
-                        .then(() => this.peerConnection.createAnswer())
-                        .then(answer => {
-                            return this.peerConnection.setLocalDescription(answer);
-                        })
-                        .then(() => {
-                            this.sendWebSocketMessage({
-                                type: "answer",
-                                answer: this.peerConnection.localDescription,
-                                viewer_id: offerData.viewer_id,
-                                room_id: offerData.room_id
-                            });
-                        })
-                        .catch(error => {
-                            console.error("Error handling stream offer:", error);
-                            this.showNotification("Failed to establish connection", 'error');
-                        });
-            
-                } catch (error) {
-                    console.error("Error in handleStreamOffer:", error);
-                    this.showNotification("Error processing stream offer", 'error')
-                }
-            }
-            
-            initializePeerConnection() {
-                this.peerConnection = new RTCPeerConnection({
-                      iceServers: [
-                            { 
-                                urls: [
-                                    "turn:global.relay.metered.ca:80",
-                                    "turn:global.relay.metered.ca:80?transport=tcp",
-                                    "turn:global.relay.metered.ca:443",
-                                    "turns:global.relay.metered.ca:443?transport=tcp"
-                                ],
-                                username: "f41e6ed59c9fead32c5f40e8",
-                                credential: "nrjse7jNfXAMi0Rs"
-                            },
-                            { urls: "stun:stun.relay.metered.ca:80" }
-                        ],
-                        iceTransportPolicy: 'all', // Try both relay and non-relay
-                        bundlePolicy: 'max-bundle',
-                        rtcpMuxPolicy: 'require'
-                });
-
-                // Configure audio settings
-                const audioSenderOptions = {
-                    priority: 'high',
-                    degradationPreference: 'maintain-framerate'
-                };
-
-                // Add connection state handlers
-                this.peerConnection.onconnectionstatechange = () => {
-                    const state = this.peerConnection.connectionState;
-                    console.log("Connection state:", state);
-                    if (state === 'failed') {
-                        this.showNotification("Connection failed, trying to reconnect...", 'error');
-                        this.reconnect();
-                    }
-                };
-
-                this.peerConnection.oniceconnectionstatechange = () => {
-                    console.log("ICE connection state:", this.peerConnection.iceConnectionState);
-                };
-
-                // Network quality monitoring
-                this.peerConnection.onicegatheringstatechange = () => {
-                    console.log("ICE gathering state:", this.peerConnection.iceGatheringState);
-                };
-            }
-            
-            handleIncomingStream(stream) {
-                if (this.hasUserInteracted) {
-                    this.playStream(stream);
-                } else {
-                    this.deferredStream = stream;
-                    this.elements.listenPrompt.classList.remove('d-none');
-                    console.warn("User has not interacted with the page yet. Audio play deferred.");
-                }
-            }
-            
-            playStream(stream) {
-                // Configure audio element for better playback
-                this.remoteAudio.autoplay = true;
-                this.remoteAudio.playsInline = true;
-                this.remoteAudio.srcObject = stream;
-                
-                // Handle potential audio glitches
-                let lastPlayAttempt = 0;
-                const playWithRetry = () => {
-                    const now = Date.now();
-                    if (now - lastPlayAttempt < 1000) return; // Throttle retries
-                    
-                    lastPlayAttempt = now;
-                    this.remoteAudio.play()
-                        .then(() => {
-                            this.elements.listenPrompt.classList.add('d-none');
-                            this.monitorAudioQuality();
-                        })
-                        .catch(error => {
-                            console.error("Audio play failed:", error);
-                            if (error.name === 'NotAllowedError') {
-                                this.showNotification("Please click to allow audio playback", 'error');
-                            } else {
-                                setTimeout(playWithRetry, 500);
-                            }
-                        });
-                };
-                
-                playWithRetry();
-            }
-
-            monitorAudioQuality() {
-                const audioContext = new AudioContext();
-                const source = audioContext.createMediaStreamSource(this.remoteAudio.srcObject);
-                const analyser = audioContext.createAnalyser();
-                source.connect(analyser);
-                
-                const checkQuality = () => {
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                    analyser.getByteFrequencyData(dataArray);
-                    
-                    // Calculate average volume
-                    let sum = 0;
-                    for (let i = 0; i < dataArray.length; i++) {
-                        sum += dataArray[i];
-                    }
-                    const avgVolume = sum / dataArray.length;
-                    
-                    if (avgVolume < 10) { // Threshold for silent audio
-                        console.warn("Low audio volume detected");
-                        this.showStatus("Weak audio signal detected");
-                    }
-                    
-                    if (this.remoteAudio.srcObject) {
-                        requestAnimationFrame(checkQuality);
-                    }
-                };
-                
-                checkQuality();
-            }
-            
-            tryPlayDeferredStream() {
-                if (this.deferredStream) {
-                    this.playStream(this.deferredStream);
-                    this.deferredStream = null;
-                }
-            }
-            
-            handleListenClick() {
-                this.hasUserInteracted = true;
-                this.tryPlayDeferredStream();
-            }
-            
-            handleIceCandidate(candidateData) {
-                if (this.peerConnection) {
-                    this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData.candidate))
-                        .catch(error => {
-                            console.error("Error adding ICE candidate:", error);
-                        });
-                }
-            }
-            
-            leaveStream() {
-                if (this.peerConnection) {
-                    this.peerConnection.close();
-                    this.peerConnection = null;
-                }
-                
-                if (this.socket) {
-                    this.socket.close();
-                    this.socket = null;
-                }
-                
-                if (this.remoteAudio.srcObject) {
-                    this.remoteAudio.srcObject.getTracks().forEach(track => track.stop());
-                    this.remoteAudio.srcObject = null;
-                }
-                
-                this.elements.leaveBtn.classList.add('d-none');
-                this.elements.connectBtn.classList.remove('d-none');
-                this.showStatus("Disconnected from stream");
-            }
-            
-            handleWebSocketClose() {
-                console.log("WebSocket disconnected");
-                this.showStatus("Disconnected from server");
-            }
-            
-            handleWebSocketError(error) {
-                console.error("WebSocket error:", error);
-                this.showNotification("Connection error occurred", 'error');
-            }
-
-            reconnect() {
-                console.log("Attempting to reconnect...");
-                this.leaveStream();
-                setTimeout(() => {
-                    this.connectToStream();
-                }, 2000 + Math.random() * 3000); // Random delay to avoid thundering herd
-            }
-
-            sendWebSocketMessage(data) {
-                if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-                    this.socket.send(JSON.stringify(data));
-                } else {
-                    console.warn("Cannot send message - WebSocket not open");
-                    this.showNotification("Connection lost. Please reconnect.", 'error');
-                }
-            }
-            
-            showNotification(message, type = 'info') {
-                $.jGrowl(message, { 
-                    life: 5000,
-                    theme: type === 'error' ? 'jgrowl-error' : 'jgrowl-info'
-                });
-            }
-            
-            showStatus(message) {
-                const statusEl = this.elements.statusMessage;
-                statusEl.textContent = message;
-                statusEl.classList.remove('d-none');
-                setTimeout(() => statusEl.classList.add('d-none'), 3000);
-            }
+    constructor() {
+        this.socket = null;
+        this.peerConnection = null;
+        this.remoteAudio = document.getElementById('remoteAudio');
+        this.viewerId = null;
+        this.hasUserInteracted = false;
+        this.deferredStream = null;
+        this.roomId = null;
+        
+        this.initElements();
+        this.initEventListeners();
+    }
+    
+    initElements() {
+        this.elements = {
+            connectBtn: document.getElementById('connect'),
+            leaveBtn: document.getElementById('leave'),
+            listenBtn: document.getElementById('listenBtn'),
+            listenPrompt: document.getElementById('listenPrompt'),
+            eventIdInput: document.getElementById('eventId'),
+            statusMessage: document.getElementById('statusMessage')
+        };
+    }
+    
+    initEventListeners() {
+        this.elements.connectBtn.addEventListener('click', () => this.connectToStream());
+        this.elements.leaveBtn.addEventListener('click', () => this.leaveStream());
+        this.elements.listenBtn.addEventListener('click', () => this.handleListenClick());
+        
+        // Single interaction listener for autoplay policy
+        document.addEventListener('click', () => {
+            this.hasUserInteracted = true;
+            this.tryPlayDeferredStream();
+        }, { once: true });
+    }
+    
+    connectToStream() {
+        this.roomId = this.elements.eventIdInput.value.trim();
+        
+        if (!this.roomId) {
+            this.showNotification("Please enter a room ID", 'error');
+            return;
         }
         
-        // Initialize the viewer when DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            new WebRTCViewer();
+        this.initializeWebSocket();
+    }
+    
+    initializeWebSocket() {
+        const backendUrl = `wss://apps.pluglr.com/ws/stream/start/live/${this.roomId}`;
+        
+        try {
+            this.socket = new WebSocket(backendUrl);
+            
+            this.socket.onopen = () => {
+                this.showStatus("Connecting to stream...");
+                this.sendWebSocketMessage({
+                    type: "viewer_ready",
+                    role: "viewer",
+                    room_id: this.roomId
+                });
+            };
+            
+            this.socket.onmessage = (event) => this.handleWebSocketMessage(event);
+            this.socket.onclose = () => this.handleWebSocketClose();
+            this.socket.onerror = (error) => this.handleWebSocketError(error);
+            
+        } catch (error) {
+            console.error("WebSocket initialization error:", error);
+            this.showNotification("Failed to connect to server", 'error');
+        }
+    }
+    
+    handleWebSocketMessage(event) {
+        try {
+            const data = JSON.parse(event.data);
+            
+            switch(data.type) {
+                case "stream_offer":
+                    this.handleStreamOffer(data);
+                    break;
+                case "ice_candidate":
+                    this.handleIceCandidate(data);
+                    break;
+                case "viewer_accepted":
+                    this.viewerId = data.viewer_id;
+                    this.showStatus("Connected to stream");
+                    this.elements.connectBtn.classList.add('d-none');
+                    this.elements.leaveBtn.classList.remove('d-none');
+                    break;
+                default:
+                    console.log("Unhandled message type:", data.type);
+            }
+        } catch (error) {
+            console.error("Error handling WebSocket message:", error);
+        }
+    }
+    
+    handleStreamOffer(offerData) {
+        try {
+            // Extract needed values
+            const { viewer_id, room_id, offer, from } = offerData;
+            
+            // Validate required fields
+            if (!offer || !offer.sdp) {
+                throw new Error("Invalid offer format");
+            }
+    
+            // Store the viewer ID for later use
+            this.viewerId = viewer_id; 
+            this.initializePeerConnection();
+
+            this.peerConnection.ontrack = (event) => {
+                console.log("Received stream:", event.streams[0]);
+                this.handleIncomingStream(event.streams[0]);
+            };
+            
+            this.peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    this.sendWebSocketMessage({
+                        type: "ice_candidate",
+                        viewer_id: offerData.viewer_id,
+                        candidate: event.candidate,
+                        room_id: offerData.room_id
+                    });
+                }
+            };
+            
+            this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerData.offer))
+                .then(() => this.peerConnection.createAnswer())
+                .then(answer => {
+                    return this.peerConnection.setLocalDescription(answer);
+                })
+                .then(() => {
+                    this.sendWebSocketMessage({
+                        type: "answer",
+                        answer: this.peerConnection.localDescription,
+                        viewer_id: offerData.viewer_id,
+                        room_id: offerData.room_id
+                    });
+                })
+                .catch(error => {
+                    console.error("Error handling stream offer:", error);
+                    this.showNotification("Failed to establish connection", 'error');
+                });
+    
+        } catch (error) {
+            console.error("Error in handleStreamOffer:", error);
+            this.showNotification("Error processing stream offer", 'error')
+        }
+    }
+    
+    initializePeerConnection() {
+        this.peerConnection = new RTCPeerConnection({
+            iceServers: [
+                { 
+                    urls: [
+                        "turn:global.relay.metered.ca:80",
+                        "turn:global.relay.metered.ca:80?transport=tcp",
+                        "turn:global.relay.metered.ca:443",
+                        "turns:global.relay.metered.ca:443?transport=tcp"
+                    ],
+                    username: "f41e6ed59c9fead32c5f40e8",
+                    credential: "nrjse7jNfXAMi0Rs"
+                },
+                { urls: "stun:stun.relay.metered.ca:80" }
+            ],
+            iceTransportPolicy: 'all', // Try both relay and non-relay
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
         });
+
+        // Add connection state handlers
+        this.peerConnection.onconnectionstatechange = () => {
+            const state = this.peerConnection.connectionState;
+            console.log("Connection state:", state);
+            if (state === 'failed') {
+                this.showNotification("Connection failed, trying to reconnect...", 'error');
+                this.reconnect();
+            }
+        };
+
+        this.peerConnection.oniceconnectionstatechange = () => {
+            console.log("ICE connection state:", this.peerConnection.iceConnectionState);
+        };
+    }
+    
+    handleIncomingStream(stream) {
+        if (this.hasUserInteracted) {
+            this.playStream(stream);
+        } else {
+            this.deferredStream = stream;
+            this.elements.listenPrompt.classList.remove('d-none');
+            console.warn("User has not interacted with the page yet. Audio play deferred.");
+        }
+    }
+    
+    playStream(stream) {
+        // Configure audio element for better playback
+        this.remoteAudio.autoplay = true;
+        this.remoteAudio.playsInline = true;
+        this.remoteAudio.srcObject = stream;
+        
+        // Handle potential audio glitches
+        let lastPlayAttempt = 0;
+        const playWithRetry = () => {
+            const now = Date.now();
+            if (now - lastPlayAttempt < 1000) return; // Throttle retries
+            
+            lastPlayAttempt = now;
+            this.remoteAudio.play()
+                .then(() => {
+                    this.elements.listenPrompt.classList.add('d-none');
+                })
+                .catch(error => {
+                    console.error("Audio play failed:", error);
+                    if (error.name === 'NotAllowedError') {
+                        this.showNotification("Please click to allow audio playback", 'error');
+                    } else {
+                        setTimeout(playWithRetry, 500);
+                    }
+                });
+        };
+        
+        playWithRetry();
+    }
+
+    tryPlayDeferredStream() {
+        if (this.deferredStream) {
+            this.playStream(this.deferredStream);
+            this.deferredStream = null;
+        }
+    }
+    
+    handleListenClick() {
+        this.hasUserInteracted = true;
+        this.tryPlayDeferredStream();
+    }
+    
+    handleIceCandidate(candidateData) {
+        if (this.peerConnection) {
+            this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData.candidate))
+                .catch(error => {
+                    console.error("Error adding ICE candidate:", error);
+                });
+        }
+    }
+    
+    leaveStream() {
+        if (this.peerConnection) {
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
+        
+        if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+        }
+        
+        if (this.remoteAudio.srcObject) {
+            this.remoteAudio.srcObject.getTracks().forEach(track => track.stop());
+            this.remoteAudio.srcObject = null;
+        }
+        
+        this.elements.leaveBtn.classList.add('d-none');
+        this.elements.connectBtn.classList.remove('d-none');
+        this.showStatus("Disconnected from stream");
+    }
+    
+    handleWebSocketClose() {
+        console.log("WebSocket disconnected");
+        this.showStatus("Disconnected from server");
+    }
+    
+    handleWebSocketError(error) {
+        console.error("WebSocket error:", error);
+        this.showNotification("Connection error occurred", 'error');
+    }
+
+    reconnect() {
+        console.log("Attempting to reconnect...");
+        this.leaveStream();
+        setTimeout(() => {
+            this.connectToStream();
+        }, 2000 + Math.random() * 3000); // Random delay to avoid thundering herd
+    }
+
+    sendWebSocketMessage(data) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify(data));
+        } else {
+            console.warn("Cannot send message - WebSocket not open");
+            this.showNotification("Connection lost. Please reconnect.", 'error');
+        }
+    }
+    
+    showNotification(message, type = 'info') {
+        $.jGrowl(message, { 
+            life: 5000,
+            theme: type === 'error' ? 'jgrowl-error' : 'jgrowl-info'
+        });
+    }
+    
+    showStatus(message) {
+        const statusEl = this.elements.statusMessage;
+        statusEl.textContent = message;
+        statusEl.classList.remove('d-none');
+        setTimeout(() => statusEl.classList.add('d-none'), 3000);
+    }
+}
+
+// Initialize the viewer when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    new WebRTCViewer();
+});
+
     </script>
 </body>
 </html>
