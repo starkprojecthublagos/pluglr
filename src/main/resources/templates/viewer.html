@@ -40,18 +40,33 @@
 
     <script>
         class WebRTCViewer {
-    constructor() {
-        this.socket = null;
-        this.peerConnection = null;
-        this.remoteAudio = document.getElementById('remoteAudio');
-        this.viewerId = null;
-        this.hasUserInteracted = false;
-        this.deferredStream = null;
-        this.roomId = null;
-        
-        this.initElements();
-        this.initEventListeners();
-    }
+            constructor() {
+                this.socket = null;
+                this.peerConnection = null;
+                this.remoteAudio = document.getElementById('remoteAudio');
+                this.viewerId = null;
+                this.hasUserInteracted = false;
+                this.deferredStream = null;
+                this.roomId = null;
+                
+                this.initElements();
+                this.initEventListeners();
+
+                 // Centralized ICE servers configuration
+                this.iceServers = [
+                    { urls: "stun:stun.relay.metered.ca:80" },
+                    { 
+                        urls: [
+                            "turn:global.relay.metered.ca:80",
+                            "turn:global.relay.metered.ca:80?transport=tcp",
+                            "turn:global.relay.metered.ca:443",
+                            "turns:global.relay.metered.ca:443?transport=tcp"
+                        ],
+                        username: "f41e6ed59c9fead32c5f40e8",
+                        credential: "nrjse7jNfXAMi0Rs"
+                    }
+                ];
+            }
     
     initElements() {
         this.elements = {
@@ -193,36 +208,53 @@
     
     initializePeerConnection() {
         this.peerConnection = new RTCPeerConnection({
-            iceServers: [
-                { 
-                    urls: [
-                        "turn:global.relay.metered.ca:80",
-                        "turn:global.relay.metered.ca:80?transport=tcp",
-                        "turn:global.relay.metered.ca:443",
-                        "turns:global.relay.metered.ca:443?transport=tcp"
-                    ],
-                    username: "f41e6ed59c9fead32c5f40e8",
-                    credential: "nrjse7jNfXAMi0Rs"
-                },
-                { urls: "stun:stun.relay.metered.ca:80" }
-            ],
-            iceTransportPolicy: 'all', // Try both relay and non-relay
+            iceServers: this.iceServers,
+            iceTransportPolicy: 'all',
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
         });
 
-        // Add connection state handlers
+        // Improved ICE candidate handling
+        this.peerConnection.onicecandidate = (event) => {
+            if (event.candidate && this.socket?.readyState === WebSocket.OPEN) {
+                this.sendWebSocketMessage({
+                    type: "ice_candidate",
+                    viewer_id: this.viewerId,
+                    candidate: event.candidate,
+                    room_id: this.roomId
+                });
+            }
+        };
+
+        // Enhanced connection state monitoring
         this.peerConnection.onconnectionstatechange = () => {
             const state = this.peerConnection.connectionState;
             console.log("Connection state:", state);
-            if (state === 'failed') {
-                this.showNotification("Connection failed, trying to reconnect...", 'error');
+            
+            if (state === 'connected') {
+                this.showStatus("Stream connected");
+            } else if (state === 'disconnected' || state === 'failed') {
+                this.showNotification("Connection lost, reconnecting...", 'warning');
                 this.reconnect();
             }
         };
 
+        // Better ICE state tracking
         this.peerConnection.oniceconnectionstatechange = () => {
-            console.log("ICE connection state:", this.peerConnection.iceConnectionState);
+            const state = this.peerConnection.iceConnectionState;
+            console.log("ICE state:", state);
+            
+            if (state === 'failed') {
+                console.warn("ICE failed, restarting ICE gathering");
+                this.peerConnection.restartIce();
+            }
+        };
+
+        // Stream handling
+        this.peerConnection.ontrack = (event) => {
+            if (event.streams && event.streams[0]) {
+                this.handleIncomingStream(event.streams[0]);
+            }
         };
     }
     

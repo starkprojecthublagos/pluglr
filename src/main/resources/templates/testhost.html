@@ -24,250 +24,191 @@
     <!-- Stream Control -->
     <button id="startStream">Start Stream</button>
     <button id="stopStream">Stop Stream</button>
-    <script>
-        let socket;
-        let localStream;
-        let eventId;
-        let peerConnection;
-        const peerConnections = new Map();
-        let iceCandidates = [];
+  <script>
+    let socket;
+    let localStream;
+    let eventId;
+    let peerConnection;
+    const peerConnections = new Map();
+    const iceServers = [
+        { urls: "stun:stun.relay.metered.ca:80" },
+        { 
+            urls: "turn:global.relay.metered.ca:80",
+            username: "f41e6ed59c9fead32c5f40e8",
+            credential: "nrjse7jNfXAMi0Rs"
+        },
+        { 
+            urls: "turn:global.relay.metered.ca:80?transport=tcp",
+            username: "f41e6ed59c9fead32c5f40e8",
+            credential: "nrjse7jNfXAMi0Rs"
+        },
+        { 
+            urls: "turn:global.relay.metered.ca:443",
+            username: "f41e6ed59c9fead32c5f40e8",
+            credential: "nrjse7jNfXAMi0Rs"
+        },
+        { 
+            urls: "turns:global.relay.metered.ca:443?transport=tcp",
+            username: "f41e6ed59c9fead32c5f40e8",
+            credential: "nrjse7jNfXAMi0Rs"
+        }
+    ];
 
-        // Buttons
-        const startStreamButton = document.getElementById("startStream");
-        const stopStreamButton = document.getElementById("stopStream");
+    // Buttons
+    const startStreamButton = document.getElementById("startStream");
+    const stopStreamButton = document.getElementById("stopStream");
 
-        // WebSocket URL (replace with your backend URL)
-       const backendUrl = "wss://apps.pluglr.com/ws/stream/start/live/host_event_id";
+    // WebSocket connection
+    socket = new WebSocket("wss://apps.pluglr.com/ws/stream/start/live/host_event_id");
 
+    socket.onopen = () => {
+        console.log("WebSocket connected!");
+        socket.send(JSON.stringify({
+            type: "host_ready",
+            role: "host",
+            room_id: "host_event_id" 
+        }));
+    };
 
-        // WebSocket connection
-        socket = new WebSocket(backendUrl);
+    socket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === "host_room_created") {
+            eventId = data.room_id;
+            console.log("Room ID:", eventId);
+        }
 
-        socket.onopen = () => {
-            console.log("WebSocket connected!");
+        if (data.type === "viewer_joined") {
+            const viewerId = data.viewer_id;
+            await createConnectionForViewer(viewerId);
+        }
 
-            // ✅ Let the backend know host is ready (include host role and maybe room ID)
-            socket.send(JSON.stringify({
-                type: "host_ready",
-                role: "host",
-                room_id: "host_event_id" 
-            }));
-        };
-
-
-        socket.onmessage = async (event) => {
-            const data = JSON.parse(event.data);
-            
-            if (data.type === "host_room_created") {
-                eventId = data.room_id;
-                console.log("Room ID:", eventId);
-            }
-
-            if (data.type === "viewer_joined") {
-                // ✅ When a viewer joins, start a new connection
-                const viewerId = data.viewer_id;
-                await createConnectionForViewer(viewerId);
-            }
-
-            if (data.type === "stream_answer") {
-                const viewerId = data.viewer_id;
-                const pc = peerConnections.get(viewerId);
-                if (pc) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                }
-            }
-
-            if (data.type === "ice_candidate") {
-                const viewerId = data.viewer_id;
-                const pc = peerConnections.get(viewerId);
-                if (pc && data.candidate) {
-                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                }
-            }
-        };
-
-        // Start Stream Button Click
-        startStreamButton.addEventListener("click", async () => {
-            await startAudioStream();
-            startStreamButton.disabled = true;
-            stopStreamButton.disabled = false;
-        });
-
-        // Stop Stream Button Click
-        stopStreamButton.addEventListener("click", () => {
-            stopAudioStream();
-        });
-
-        // Function to start audio stream
-        async function startAudioStream() {
-            try {
-                // Step 1: Get user media (microphone)
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true
-                });
-
-                // Step 2: Set up RTCPeerConnection
-                peerConnection = new RTCPeerConnection({
-                      iceServers: [
-                            { 
-                                urls: [
-                                    "turn:global.relay.metered.ca:80",
-                                    "turn:global.relay.metered.ca:80?transport=tcp",
-                                    "turn:global.relay.metered.ca:443",
-                                    "turns:global.relay.metered.ca:443?transport=tcp"
-                                ],
-                                username: "f41e6ed59c9fead32c5f40e8",
-                                credential: "nrjse7jNfXAMi0Rs"
-                            },
-                            { urls: "stun:stun.relay.metered.ca:80" }
-                        ],
-                        iceTransportPolicy: 'all', // Try both relay and non-relay
-                        bundlePolicy: 'max-bundle',
-                        rtcpMuxPolicy: 'require'
-                });
-
-                // Add local audio stream to RTCPeerConnection
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-                // Step 3: Set up ICE candidates handling
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        sendIceCandidate(event.candidate);
-                    }
-                };
-
-                // Step 4: Create SDP offer and send to backend
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-
-                // Send the offer to backend via WebSocket
-                socket.send(JSON.stringify({
-                    type: "stream_offer",
-                    offer: offer
-                }));
-                console.log("SDP offer sent to backend");
-
-            } catch (error) {
-                console.error("Error starting audio stream:", error);
+        if (data.type === "stream_answer") {
+            const viewerId = data.viewer_id;
+            const pc = peerConnections.get(viewerId);
+            if (pc) {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
             }
         }
 
-        // Function to stop the audio stream
-        function stopAudioStream() {
-            if (peerConnection) {
-                peerConnection.close();
-            }
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
-            startStreamButton.disabled = false;
-            stopStreamButton.disabled = true;
-            console.log("Stream stopped");
-        }
-
-        // Handle incoming SDP offer from backend (listeners)
-        async function handleStreamOffer(offer) {
-            try {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
-                // Create an SDP answer
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-
-                // Send the answer back to backend
-                socket.send(JSON.stringify({
-                    type: "stream_answer",
-                    answer: answer
-                }));
-                console.log("SDP answer sent to backend");
-            } catch (error) {
-                console.error("Error handling stream offer:", error);
+        if (data.type === "ice_candidate") {
+            const viewerId = data.viewer_id;
+            const pc = peerConnections.get(viewerId);
+            if (pc && data.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
             }
         }
+    };
 
-        // Handle ICE candidate from backend (listeners)
-        async function handleIceCandidate(candidate) {
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (error) {
-                console.error("Error adding ICE candidate:", error);
-            }
-        }
-
-        // Function to send ICE candidates to backend
-        function sendIceCandidate(candidate) {
-            socket.send(JSON.stringify({
-                type: "ice_candidate",
-                candidate: candidate
-            }));
-        }
-
-        async function createConnectionForViewer(viewerId) {
-    console.log("Creating connection for viewer:", viewerId);
-    
-    if (!localStream) {
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        } catch (err) {
-            console.error("Failed to get local stream", err);
-            return;
-        }
-    }
-
-    const pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { 
-                urls: [
-                    'turn:your-real-turn-server.com:3478?transport=udp',
-                    'turn:your-real-turn-server.com:3478?transport=tcp'
-                ],
-                username: 'your_username',
-                credential: 'your_password'
-            }
-        ],
-        iceTransportPolicy: 'all'
+    // Start Stream Button Click
+    startStreamButton.addEventListener("click", async () => {
+        await startAudioStream();
+        startStreamButton.disabled = true;
+        stopStreamButton.disabled = false;
     });
 
-    // Add local tracks
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    // Stop Stream Button Click
+    stopStreamButton.addEventListener("click", () => {
+        stopAudioStream();
+    });
 
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            console.log("Host generated ICE candidate for viewer:", viewerId, event.candidate);
+    async function startAudioStream() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            peerConnection = new RTCPeerConnection({
+                iceServers: iceServers,
+                iceTransportPolicy: 'all',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
+            });
+
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.send(JSON.stringify({
+                        type: "ice_candidate",
+                        candidate: event.candidate
+                    }));
+                }
+            };
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
             socket.send(JSON.stringify({
-                type: "ice_candidate",
-                viewer_id: viewerId,
-                candidate: event.candidate,
-                room_id: eventId  
+                type: "stream_offer",
+                offer: offer
             }));
+            console.log("SDP offer sent to backend");
+
+        } catch (error) {
+            console.error("Error starting audio stream:", error);
         }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-        console.log(`ICE state for viewer ${viewerId}:`, pc.iceConnectionState);
-        if (pc.iceConnectionState === 'failed') {
-            console.error("ICE failed for viewer:", viewerId);
-        }
-    };
-
-    try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        socket.send(JSON.stringify({
-            type: "offer",
-            viewer_id: viewerId,
-            room_id: eventId,
-            offer: offer
-        }));
-
-        peerConnections.set(viewerId, pc);
-    } catch (error) {
-        console.error("Error creating offer for viewer:", viewerId, error);
     }
-}
 
-    </script>
+    function stopAudioStream() {
+        if (peerConnection) peerConnection.close();
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        startStreamButton.disabled = false;
+        stopStreamButton.disabled = true;
+        console.log("Stream stopped");
+    }
+
+    async function createConnectionForViewer(viewerId) {
+        console.log("Creating connection for viewer:", viewerId);
+        
+        if (!localStream) {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+                console.error("Failed to get local stream", err);
+                return;
+            }
+        }
+
+        const pc = new RTCPeerConnection({
+            iceServers: iceServers,
+            iceTransportPolicy: 'all'
+        });
+
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.send(JSON.stringify({
+                    type: "ice_candidate",
+                    viewer_id: viewerId,
+                    candidate: event.candidate,
+                    room_id: eventId  
+                }));
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log(`ICE state for viewer ${viewerId}:`, pc.iceConnectionState);
+            if (pc.iceConnectionState === 'failed') {
+                console.error("ICE failed for viewer:", viewerId);
+            }
+        };
+
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            socket.send(JSON.stringify({
+                type: "offer",
+                viewer_id: viewerId,
+                room_id: eventId,
+                offer: offer
+            }));
+
+            peerConnections.set(viewerId, pc);
+        } catch (error) {
+            console.error("Error creating offer for viewer:", viewerId, error);
+        }
+    }
+</script>
 </body>
 </html>
