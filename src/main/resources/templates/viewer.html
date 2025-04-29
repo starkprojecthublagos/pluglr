@@ -209,7 +209,7 @@
     initializePeerConnection() {
         this.peerConnection = new RTCPeerConnection({
             iceServers: this.iceServers,
-            iceTransportPolicy: "relay",
+            iceTransportPolicy: "all",
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require'
         });

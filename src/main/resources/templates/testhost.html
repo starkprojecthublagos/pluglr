@@ -119,7 +119,7 @@
 
             peerConnection = new RTCPeerConnection({
                 iceServers: iceServers,
-                iceTransportPolicy: "relay",
+                iceTransportPolicy: "all",
                 bundlePolicy: 'max-bundle',
                 rtcpMuxPolicy: 'require'
             });
@@ -171,7 +171,7 @@
 
         const pc = new RTCPeerConnection({
             iceServers: iceServers,
-            iceTransportPolicy: "relay",
+            iceTransportPolicy: "all",
         });
 
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
