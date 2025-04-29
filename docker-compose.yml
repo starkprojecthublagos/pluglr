@@ -52,31 +52,6 @@ services:
     networks:
       - pluglr-springboot-network
 
-  coturn:
-    image: coturn/coturn
-    container_name: coturn
-    restart: always
-    ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "5349:5349"
-      - "5349:5349/udp"
-      - "49152-65535:49152-65535/udp"
-    environment:
-      - TURN_REALM=apps.pluglr.com
-      - TURN_USERNAME=f41e6ed59c9fead32c5f40e8
-      - TURN_PASSWORD=nrjse7jNfXAMi0Rs
-    command: 
-      - --fingerprint
-      - --lt-cred-mech
-      - --use-auth-secret
-      - --realm=apps.pluglr.com
-      - --external-ip=216.225.196.233
-      - --min-port=49152
-      - --max-port=65535
-    networks:
-      - pluglr-springboot-network
-
 networks:
   pluglr-springboot-network:
     driver: bridge
